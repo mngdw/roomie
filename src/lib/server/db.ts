@@ -17,16 +17,26 @@ export const DB_PASSWORD = process.env.ROOMIE_DB_PASSWORD ?? "postgres";
  */
 export async function getDbPool(): Promise<pg.Pool> {
   if (!pool) {
-    pool = new pg.Pool({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASSWORD,
-      database: DEFAULT_DB_NAME,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
+    if (process.env.DATABASE_URL) {
+      pool = new pg.Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      });
+    } else {
+      pool = new pg.Pool({
+        host: DB_HOST,
+        port: DB_PORT,
+        user: DB_USER,
+        password: DB_PASSWORD,
+        database: DEFAULT_DB_NAME,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      });
+    }
   }
   return pool;
 }
