@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
+import { FloatingChatWidget } from "@/components/FloatingChatWidget";
 import { getCurrentUser } from "@/lib/server/session";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-500 selection:text-white">
         <Navbar currentUser={currentUser} />
         <main className="flex-1 pb-16 md:pb-8">{children}</main>
+        <FloatingChatWidget currentUserId={currentUser?.id ?? null} />
         <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center space-x-2">

@@ -52,7 +52,9 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  // Load notifications
+  const [matchCount, setMatchCount] = useState<number>(0);
+
+  // Load notifications and conversations count
   useEffect(() => {
     if (currentUser?.id) {
       fetch("/api/notifications")
@@ -60,6 +62,15 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
         .then((d) => {
           if (Array.isArray(d.notifications)) {
             setNotifications(d.notifications);
+          }
+        })
+        .catch(() => {});
+
+      fetch("/api/conversations")
+        .then((r) => r.json())
+        .then((d) => {
+          if (Array.isArray(d.conversations)) {
+            setMatchCount(d.conversations.length);
           }
         })
         .catch(() => {});
@@ -97,7 +108,7 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
 
   const navLinks = [
     { href: "/discovery", label: "Khám phá", icon: Compass },
-    { href: "/matches", label: "Ghép đôi", icon: Heart },
+    { href: "/matches", label: "Tin nhắn & Ghép đôi", icon: MessageCircle, badge: matchCount },
     { href: "/questionnaire", label: "Bản khảo sát", icon: ClipboardList },
     { href: "/profile", label: "Hồ sơ của tôi", icon: User },
     ...(currentUser?.housingStatus === "has_room"
@@ -140,6 +151,11 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
                 >
                   <Icon className="w-4 h-4" />
                   <span>{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -382,12 +398,19 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center py-1 px-2.5 rounded-lg text-[11px] font-medium transition-colors ${
+              className={`relative flex flex-col items-center py-1 px-2 rounded-lg text-[10px] font-medium transition-colors ${
                 isActive ? "text-blue-600 font-semibold" : "text-slate-500"
               }`}
             >
-              <Icon className="w-4 h-4 mb-0.5" />
-              <span>{item.label}</span>
+              <div className="relative">
+                <Icon className="w-4 h-4 mb-0.5" />
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="absolute -top-1.5 -right-2 w-3.5 h-3.5 bg-blue-600 text-white rounded-full text-[8px] font-bold flex items-center justify-center">
+                    {item.badge}
+                  </span>
+                )}
+              </div>
+              <span className="truncate max-w-[65px]">{item.label}</span>
             </Link>
           );
         })}

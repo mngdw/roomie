@@ -43,13 +43,29 @@ export default async function MatchesPage() {
     for (const row of res.rows) {
       const partner = await fetchCandidateUser(client, row.partner_id);
       if (partner) {
+        let convId = row.conversation_id;
+        if (!convId) {
+          const ins = await client.query(
+            `insert into public.conversations (match_id) values ($1) on conflict do nothing returning id`,
+            [row.match_id]
+          );
+          convId = ins.rows[0]?.id;
+          if (!convId) {
+            const fetchConv = await client.query(
+              `select id from public.conversations where match_id = $1`,
+              [row.match_id]
+            );
+            convId = fetchConv.rows[0]?.id;
+          }
+        }
+
         const compatibility = viewer
           ? scorePair(viewer.answers, partner.answers)
           : null;
         partners.push({
           matchId: row.match_id,
           matchedAt: row.matched_at,
-          conversationId: row.conversation_id,
+          conversationId: convId,
           partner,
           compatibility,
         });
