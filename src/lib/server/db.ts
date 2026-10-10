@@ -22,7 +22,7 @@ export async function getDbPool(): Promise<pg.Pool> {
     const dbUrl =
       process.env.DATABASE_URL ||
       (isProd
-        ? "postgresql://postgres:uH2t7klyNnatHFoV@db.pdikiegygpmphljioepy.supabase.co:5432/postgres"
+        ? "postgresql://postgres.pdikiegygpmphljioepy:uH2t7klyNnatHFoV@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
         : null);
 
     if (dbUrl) {
