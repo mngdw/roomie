@@ -268,7 +268,7 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
 
       const res = await saveOnboardingAction(payload);
       if (res.success) {
-        router.push("/discovery");
+        router.push("/discovery?completed=true");
         router.refresh();
       } else {
         setErrorMsg(res.error || "Có lỗi xảy ra khi lưu hồ sơ.");

@@ -56,18 +56,32 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
   };
 
   // District name mapping
+  const DISTRICT_NAMES_MAP: Record<string, string> = {
+    "hn-thanh-xuan": "Thanh Xuân",
+    "thanh_xuan": "Thanh Xuân",
+    "hn-cau-giay": "Cầu Giấy",
+    "cau_giay": "Cầu Giấy",
+    "hn-dong-da": "Đống Đa",
+    "dong_da": "Đống Đa",
+    "hn-hai-ba-trung": "Hai Bà Trưng",
+    "hai_ba_trung": "Hai Bà Trưng",
+    "hn-ba-dinh": "Ba Đình",
+    "ba_dinh": "Ba Đình",
+    "hn-hoang-mai": "Hoàng Mai",
+    "hn-nam-tu-liem": "Nam Từ Liêm",
+    "hn-bac-tu-liem": "Bắc Từ Liêm",
+    "hn-ha-dong": "Hà Đông",
+    "hn-tay-ho": "Tây Hồ",
+    "hn-long-bien": "Long Biên",
+  };
+
+  const rawDistrict =
+    candidate.housingStatus === "has_room" && candidate.room?.districtCode
+      ? candidate.room.districtCode
+      : candidate.districtCode;
+
   const districtName =
-    candidate.districtCode === "thanh_xuan"
-      ? "Thanh Xuân"
-      : candidate.districtCode === "cau_giay"
-      ? "Cầu Giấy"
-      : candidate.districtCode === "dong_da"
-      ? "Đống Đa"
-      : candidate.districtCode === "hai_ba_trung"
-      ? "Hai Bà Trưng"
-      : candidate.districtCode === "ba_dinh"
-      ? "Ba Đình"
-      : candidate.districtCode || "Hà Nội";
+    (rawDistrict && DISTRICT_NAMES_MAP[rawDistrict]) || rawDistrict || "Hà Nội";
 
   // Calculate rent display
   let rentDisplay = "";

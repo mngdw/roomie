@@ -1,30 +1,40 @@
 import { getCurrentUserId, getCurrentUser, DEFAULT_USER_ID } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
-import { getRecommendedRoommates } from "@/lib/matching/recommendations";
+import { getDiscoveryFeed, type DiscoveryFeedData } from "@/lib/matching/recommendations";
 import { DiscoveryView } from "./DiscoveryView";
 import Link from "next/link";
 import { Sparkles, UserPlus, LogIn, Compass } from "lucide-react";
 
-export default async function DiscoveryPage() {
+interface DiscoveryPageProps {
+  searchParams: Promise<{
+    completed?: string;
+    tab?: string;
+  }>;
+}
+
+export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps) {
+  const { completed, tab } = await searchParams;
   const currentUserId = await getCurrentUserId();
   const currentUser = await getCurrentUser();
 
-  let recommendations: any[] = [];
+  const isNewlyCompleted = completed === "true" || completed === "1";
+
+  let feed: DiscoveryFeedData = {
+    topRecommendations: [],
+    allCandidates: [],
+  };
+
   try {
-    const result = await withAdminDb(async (client) => {
-      // 1. If user is logged in and has completed onboarding, calculate real personalized matches
-      if (currentUserId && currentUser?.isCompleted) {
-        const userRecs = await getRecommendedRoommates(client, currentUserId);
-        if (userRecs.items.length > 0) {
-          return userRecs;
-        }
+    feed = await withAdminDb(async (client) => {
+      // 1. If user is logged in, calculate personalized feed
+      if (currentUserId) {
+        return await getDiscoveryFeed(client, currentUserId);
       }
-      // 2. Fallback to reference demo pool so guests and new users always see rich candidate profiles
-      return await getRecommendedRoommates(client, DEFAULT_USER_ID);
+      // 2. Fallback to reference demo pool so guests always see rich candidate profiles
+      return await getDiscoveryFeed(client, DEFAULT_USER_ID);
     });
-    recommendations = result.items;
   } catch (err) {
-    console.error("Error fetching recommendations in DiscoveryPage:", err);
+    console.error("Error fetching discovery feed in DiscoveryPage:", err);
   }
 
   return (
@@ -49,7 +59,7 @@ export default async function DiscoveryPage() {
               </Link>
               <Link
                 href="/login"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/40 hover:bg-blue-500/60 text-white font-semibold transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-500/40 hover:bg-blue-500/60 text-white font-semibold transition-colors"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>Đăng nhập</span>
@@ -81,8 +91,11 @@ export default async function DiscoveryPage() {
       )}
 
       <DiscoveryView
-        initialRecommendations={recommendations}
+        initialTopRecommendations={feed.topRecommendations}
+        initialAllCandidates={feed.allCandidates}
         currentUser={currentUser}
+        isNewlyCompleted={isNewlyCompleted}
+        initialTab={tab === "explore" ? "all_explore" : "top_picks"}
       />
     </div>
   );

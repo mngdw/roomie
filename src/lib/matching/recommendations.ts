@@ -562,3 +562,90 @@ export async function getRecommendedRoommates(
   // Rank in memory
   return rankCandidates(viewer, candidates, filters, pagination);
 }
+
+export interface DiscoveryFeedData {
+  topRecommendations: RecommendationResult[];
+  allCandidates: RecommendationResult[];
+}
+
+/**
+ * Loads both top high-compatibility recommendations AND the broader candidate pool
+ * for the "Khám phá tiếp" (Explore further) flow.
+ */
+export async function getDiscoveryFeed(
+  client: SupabaseClient<Database> | any,
+  viewerId: string
+): Promise<DiscoveryFeedData> {
+  const viewer = await fetchCandidateUser(client, viewerId);
+  if (!viewer) {
+    throw new Error(`Viewer with ID ${viewerId} not found.`);
+  }
+
+  // 1. Fetch eligible top recommendations
+  let topRecommendations: RecommendationResult[] = [];
+  try {
+    const recs = await getRecommendedRoommates(client, viewerId);
+    topRecommendations = recs.items;
+  } catch (err) {
+    console.warn("Could not get RPC recommendations, using pure scoring fallback", err);
+  }
+
+  // 2. Fetch all other candidate profiles from DB
+  let candidateIds: string[] = [];
+  if (isPgClient(client)) {
+    const res = await client.query(
+      `select user_id from public.profiles
+       where user_id != $1
+         and (completed_at is not null or (select count(*) from public.user_answers where user_id = profiles.user_id) > 0)
+       order by created_at asc`,
+      [viewerId]
+    );
+    candidateIds = res.rows.map((r: any) => r.user_id);
+  } else {
+    const { data: res } = await client
+      .from("profiles")
+      .select("user_id")
+      .neq("user_id", viewerId)
+      .not("completed_at", "is", null);
+    candidateIds = (res || []).map((r: any) => r.user_id);
+  }
+
+  // 3. Load all candidates and score them against the viewer
+  const allCandidates: RecommendationResult[] = [];
+  for (const id of candidateIds) {
+    const candidate = await fetchCandidateUser(client, id);
+    if (!candidate) continue;
+
+    const compatibility = scorePair(viewer.answers, candidate.answers);
+    const explanation = generateCompatibilityExplanation(
+      viewer,
+      candidate,
+      compatibility
+    );
+    const housingFit = evaluateHousingFit(viewer, candidate);
+
+    allCandidates.push({
+      candidate,
+      compatibility,
+      explanation,
+      housingFit,
+      isEligible: true,
+      ineligibilityReasons: [],
+    });
+  }
+
+  // Sort all candidates by compatibility score descending
+  allCandidates.sort(
+    (a, b) => b.compatibility.finalScore - a.compatibility.finalScore
+  );
+
+  // If topRecommendations is empty, pick top matches from allCandidates
+  if (topRecommendations.length === 0 && allCandidates.length > 0) {
+    topRecommendations = allCandidates.slice(0, Math.min(4, allCandidates.length));
+  }
+
+  return {
+    topRecommendations,
+    allCandidates,
+  };
+}
