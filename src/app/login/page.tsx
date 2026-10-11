@@ -4,15 +4,18 @@ import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DEMO_USERS } from "@/lib/constants/demo-users";
-import { Home, LogIn, Sparkles, UserCheck } from "lucide-react";
+import { Home, LogIn, Sparkles, AlertCircle } from "lucide-react";
+import { signInAction } from "@/app/actions";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("ngoc.nguyen@example.com");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSelectDemoUser = async (userId: string) => {
+    setError(null);
     startTransition(async () => {
       await fetch("/api/auth/switch", {
         method: "POST",
@@ -26,15 +29,32 @@ export default function LoginPage() {
 
   const handleStandardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSelectDemoUser(DEMO_USERS[0].id);
+    setError(null);
+
+    startTransition(async () => {
+      const res = await signInAction({ email, password });
+      if (!res.success) {
+        setError(res.error || "Đăng nhập không thành công");
+      } else {
+        if (res.isCompleted) {
+          router.push("/discovery");
+        } else {
+          router.push("/onboarding");
+        }
+        router.refresh();
+      }
+    });
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-500/30">
+        <Link
+          href="/"
+          className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-600 text-white mx-auto mb-3 shadow-lg shadow-blue-500/30 hover:scale-105 transition-transform"
+        >
           <Home className="w-6 h-6 stroke-[2.5]" />
-        </div>
+        </Link>
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">
           Đăng nhập ROOMIE
         </h2>
@@ -45,6 +65,13 @@ export default function LoginPage() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 sm:px-8 shadow-sm border border-slate-200 rounded-3xl">
+          {error && (
+            <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           {/* Standard Login Form */}
           <form onSubmit={handleStandardSubmit} className="space-y-4">
             <div>
@@ -54,6 +81,7 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -67,6 +95,7 @@ export default function LoginPage() {
               <input
                 type="password"
                 required
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -76,7 +105,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isPending}
-              className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <LogIn className="w-4 h-4" />
               <span>{isPending ? "Đang đăng nhập..." : "Đăng nhập"}</span>
@@ -87,7 +116,7 @@ export default function LoginPage() {
           <div className="mt-6 pt-6 border-t border-slate-100">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-              <span>Đăng nhập nhanh 1-chạm (Tài khoản mẫu)</span>
+              <span>Hoặc trải nghiệm nhanh (Tài khoản mẫu)</span>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -115,7 +144,7 @@ export default function LoginPage() {
             Chưa có tài khoản?{" "}
             <Link
               href="/signup"
-              className="font-bold text-blue-600 hover:text-blue-700"
+              className="font-bold text-blue-600 hover:text-blue-700 underline"
             >
               Đăng ký ngay
             </Link>

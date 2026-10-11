@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUserId, setCurrentUserId } from "@/lib/server/session";
+import { getCurrentUserId, setCurrentUserId, clearSession } from "@/lib/server/session";
 import { withSessionDb, withAdminDb } from "@/lib/server/db";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire/catalog.generated";
 
@@ -547,6 +547,243 @@ export async function markNotificationsReadAction(): Promise<void> {
     revalidatePath("/", "layout");
   } catch (err) {
     console.error("markNotificationsReadAction error:", err);
+  }
+}
+
+/**
+ * Register a new real user account.
+ */
+export async function signUpAction(data: {
+  fullName: string;
+  email: string;
+  password: string;
+}): Promise<{ success: boolean; userId?: string; error?: string }> {
+  const cleanName = data.fullName.trim();
+  const cleanEmail = data.email.toLowerCase().trim();
+  const cleanPass = data.password.trim();
+
+  if (!cleanName || cleanName.length < 2) {
+    return { success: false, error: "Họ và tên phải có ít nhất 2 ký tự" };
+  }
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    return { success: false, error: "Địa chỉ email không hợp lệ" };
+  }
+  if (!cleanPass || cleanPass.length < 6) {
+    return { success: false, error: "Mật khẩu phải có ít nhất 6 ký tự" };
+  }
+
+  try {
+    const userId = await withAdminDb(async (client) => {
+      // Check if email already registered
+      const exist = await client.query(
+        `select id from auth.users where lower(email) = $1`,
+        [cleanEmail]
+      );
+      if (exist.rows.length > 0) {
+        throw new Error("Email này đã được đăng ký tài khoản");
+      }
+
+      // Create in auth.users
+      const authRes = await client.query(
+        `
+        insert into auth.users (
+          instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+          raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+        ) values (
+          '00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+          $1, extensions.crypt($2, extensions.gen_salt('bf')), now(),
+          '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+        ) returning id
+      `,
+        [cleanEmail, cleanPass]
+      );
+
+      const newId = authRes.rows[0].id;
+      const displayName = cleanName.split(" ").slice(-1)[0] || cleanName;
+
+      // Ensure public.profiles has basic skeleton
+      await client.query(
+        `
+        insert into public.profiles (
+          user_id, display_name, full_name, date_of_birth, gender,
+          housing_status, verification_status
+        ) values (
+          $1, $2, $3, '2002-01-01', 'female',
+          'looking_for_room', 'unverified'
+        ) on conflict (user_id) do update set
+          display_name = excluded.display_name,
+          full_name = excluded.full_name
+      `,
+        [newId, displayName, cleanName]
+      );
+
+      return newId;
+    });
+
+    await setCurrentUserId(userId);
+    revalidatePath("/", "layout");
+    return { success: true, userId };
+  } catch (err) {
+    console.error("signUpAction error:", err);
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+/**
+ * Sign in with email & password.
+ */
+export async function signInAction(data: {
+  email: string;
+  password: string;
+}): Promise<{ success: boolean; userId?: string; isCompleted?: boolean; error?: string }> {
+  const cleanEmail = data.email.toLowerCase().trim();
+  const cleanPass = data.password.trim();
+
+  if (!cleanEmail || !cleanPass) {
+    return { success: false, error: "Vui lòng nhập đầy đủ email và mật khẩu" };
+  }
+
+  // Check demo shortcuts
+  const { DEMO_USERS } = await import("@/lib/constants/demo-users");
+  const demoMatch = DEMO_USERS.find(
+    (u) =>
+      cleanEmail.includes(u.displayName.toLowerCase()) ||
+      cleanEmail === `${u.displayName.toLowerCase()}@roomie.test`
+  );
+
+  try {
+    const user = await withAdminDb(async (client) => {
+      // 1. Try real password check in auth.users
+      const res = await client.query(
+        `
+        select u.id, u.email,
+               (select count(*)::int from public.user_answers a where a.user_id = u.id) as ans_count,
+               (select completed_at from public.profiles p where p.user_id = u.id) as comp_at
+        from auth.users u
+        where lower(u.email) = $1
+          and u.encrypted_password = extensions.crypt($2, u.encrypted_password)
+      `,
+        [cleanEmail, cleanPass]
+      );
+
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        return {
+          id: row.id,
+          isCompleted: row.comp_at !== null && row.ans_count >= 30,
+        };
+      }
+
+      // 2. If password check didn't match, check if this is a demo email with any password
+      if (demoMatch) {
+        return {
+          id: demoMatch.id,
+          isCompleted: true,
+        };
+      }
+
+      return null;
+    });
+
+    if (!user) {
+      return { success: false, error: "Email hoặc mật khẩu không chính xác" };
+    }
+
+    await setCurrentUserId(user.id);
+    revalidatePath("/", "layout");
+    return { success: true, userId: user.id, isCompleted: user.isCompleted };
+  } catch (err) {
+    console.error("signInAction error:", err);
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+/**
+ * Sign out current user.
+ */
+export async function signOutAction(): Promise<void> {
+  await clearSession();
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Save personal evaluation & note for a candidate.
+ */
+export async function saveCandidateNoteAction(data: {
+  candidateId: string;
+  rating?: number | null;
+  tags?: string[];
+  notes?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) return { success: false, error: "Chưa đăng nhập" };
+
+  try {
+    await withAdminDb(async (client) => {
+      await client.query(
+        `
+        insert into public.candidate_notes (user_id, candidate_id, rating, tags, notes, updated_at)
+        values ($1, $2, $3, $4, $5, now())
+        on conflict (user_id, candidate_id) do update set
+          rating = excluded.rating,
+          tags = excluded.tags,
+          notes = excluded.notes,
+          updated_at = now()
+      `,
+        [
+          currentUserId,
+          data.candidateId,
+          data.rating ?? null,
+          data.tags ?? [],
+          data.notes ?? "",
+        ]
+      );
+    });
+
+    revalidatePath(`/compatibility/${data.candidateId}`);
+    revalidatePath(`/profile/${data.candidateId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("saveCandidateNoteAction error:", err);
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+/**
+ * Fetch personal evaluation & note for a candidate.
+ */
+export async function getCandidateNoteAction(candidateId: string): Promise<{
+  rating: number | null;
+  tags: string[];
+  notes: string;
+  updatedAt: string | null;
+} | null> {
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) return null;
+
+  try {
+    return await withAdminDb(async (client) => {
+      const res = await client.query(
+        `
+        select rating, tags, notes, updated_at
+        from public.candidate_notes
+        where user_id = $1 and candidate_id = $2
+      `,
+        [currentUserId, candidateId]
+      );
+
+      if (res.rows.length === 0) return null;
+      const r = res.rows[0];
+      return {
+        rating: r.rating,
+        tags: r.tags || [],
+        notes: r.notes || "",
+        updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+      };
+    });
+  } catch (err) {
+    console.error("getCandidateNoteAction error:", err);
+    return null;
   }
 }
 

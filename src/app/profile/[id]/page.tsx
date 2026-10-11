@@ -4,6 +4,8 @@ import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
 import { scorePair } from "@/lib/matching/scoring";
 import { CandidateProfileHeader } from "@/components/CandidateProfileHeader";
+import { CandidateNoteCard } from "@/components/CandidateNoteCard";
+import { getCandidateNoteAction } from "@/app/actions";
 import {
   Heart,
   Clock,
@@ -53,6 +55,8 @@ export default async function CandidateProfilePage({
   let compatibility = viewer
     ? scorePair(viewer.answers, candidate.answers)
     : undefined;
+
+  const existingNote = await getCandidateNoteAction(id);
 
   // Derive 3 personality trait percentages from Q28, Q29, Q30
   // Values are 1 to 5 scale -> convert to percentage: (val / 5) * 100
@@ -447,6 +451,18 @@ export default async function CandidateProfilePage({
             )}
           </div>
         )}
+
+        {/* Private Candidate Evaluation & Notes */}
+        <div className="mt-8">
+          <CandidateNoteCard
+            candidateId={candidate.userId}
+            candidateName={candidate.displayName}
+            initialRating={existingNote?.rating}
+            initialTags={existingNote?.tags}
+            initialNotes={existingNote?.notes}
+            updatedAt={existingNote?.updatedAt}
+          />
+        </div>
       </div>
     </div>
   );

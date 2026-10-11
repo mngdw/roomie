@@ -21,7 +21,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { DEMO_USERS } from "@/lib/constants/demo-users";
-import { markNotificationsReadAction } from "@/app/actions";
+import { markNotificationsReadAction, signOutAction } from "@/app/actions";
 
 interface NavbarProps {
   currentUser: {
@@ -373,14 +373,18 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
                     <span>Khảo sát lại Onboarding</span>
                   </Link>
 
-                  <Link
-                    href="/login"
-                    onClick={() => setDropdownOpen(false)}
-                    className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                  <button
+                    onClick={async () => {
+                      setDropdownOpen(false);
+                      await signOutAction();
+                      router.push("/login");
+                      router.refresh();
+                    }}
+                    className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors text-left"
                   >
-                    <LogOut className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Trang Đăng nhập</span>
-                  </Link>
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Đăng xuất tài khoản</span>
+                  </button>
                 </div>
               </div>
             )}

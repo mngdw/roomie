@@ -7,6 +7,10 @@ import { generateCompatibilityExplanation } from "@/lib/matching/explanation";
 import { CandidateProfileHeader } from "@/components/CandidateProfileHeader";
 import { MatchScoreBadge } from "@/components/MatchScoreBadge";
 import { CompatibilityBars } from "@/components/CompatibilityBars";
+import { CompatibilityComparisonTable } from "@/components/CompatibilityComparisonTable";
+import { RoommateAgreementAdvice } from "@/components/RoommateAgreementAdvice";
+import { CandidateNoteCard } from "@/components/CandidateNoteCard";
+import { getCandidateNoteAction } from "@/app/actions";
 import {
   Sparkles,
   CheckCircle2,
@@ -46,6 +50,9 @@ export default async function CompatibilityPage({
     compatibility
   );
 
+  // Fetch private evaluation note for this candidate
+  const existingNote = await getCandidateNoteAction(id);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <CandidateProfileHeader
@@ -54,9 +61,9 @@ export default async function CompatibilityPage({
         currentUser={currentUser}
       />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         {/* Main Grid: Score Overview & Category Bars */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left Column: Overall Match Score Circle */}
           <div className="md:col-span-1 bg-white rounded-3xl border border-slate-200 p-6 flex flex-col items-center justify-center text-center shadow-sm">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">
@@ -193,6 +200,30 @@ export default async function CompatibilityPage({
             )}
           </div>
         </div>
+
+        {/* Roommate Living Agreement Advice */}
+        <RoommateAgreementAdvice
+          viewerName={viewer.displayName}
+          candidateName={candidate.displayName}
+        />
+
+        {/* Side-by-side 30 Questions Comparison Table */}
+        <CompatibilityComparisonTable
+          viewerName={viewer.displayName}
+          candidateName={candidate.displayName}
+          viewerAnswers={viewer.answers}
+          candidateAnswers={candidate.answers}
+        />
+
+        {/* Private Candidate Evaluation & Notes */}
+        <CandidateNoteCard
+          candidateId={candidate.userId}
+          candidateName={candidate.displayName}
+          initialRating={existingNote?.rating}
+          initialTags={existingNote?.tags}
+          initialNotes={existingNote?.notes}
+          updatedAt={existingNote?.updatedAt}
+        />
       </div>
     </div>
   );
