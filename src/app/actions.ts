@@ -158,19 +158,62 @@ export interface OnboardingPayload {
   }>;
 }
 
+function normalizeDistrict(d?: string | null): string {
+  if (!d) return "hn-cau-giay";
+  const trimmed = d.trim().toLowerCase();
+  if (trimmed.startsWith("hn-")) return trimmed;
+  return `hn-${trimmed.replace(/_/g, "-")}`;
+}
+
+const ALLOWED_REQUIREMENT_TAGS = new Set([
+  "pays_on_time",
+  "clean_tidy",
+  "respects_privacy",
+  "no_smoking",
+  "share_costs",
+]);
+
+const REQUIREMENT_TAG_MAP: Record<string, string> = {
+  khong_hut_thuoc: "no_smoking",
+  no_smoking: "no_smoking",
+  sach_se: "clean_tidy",
+  clean_tidy: "clean_tidy",
+  dong_tien_dung_han: "pays_on_time",
+  pays_on_time: "pays_on_time",
+  ton_trong_rieng_tu: "respects_privacy",
+  respects_privacy: "respects_privacy",
+  chia_se_chi_phi: "share_costs",
+  share_costs: "share_costs",
+};
+
+function sanitizeRequirementTags(tags?: string[] | null): string[] {
+  if (!tags || !Array.isArray(tags)) return ["clean_tidy", "no_smoking"];
+  const mapped = tags
+    .map((t) => REQUIREMENT_TAG_MAP[t.trim().toLowerCase()] || t.trim().toLowerCase())
+    .filter((t) => ALLOWED_REQUIREMENT_TAGS.has(t));
+  const res = Array.from(new Set(mapped));
+  return res.length > 0 ? res : ["clean_tidy", "no_smoking"];
+}
+
 /**
  * Save complete onboarding data for the current user.
  */
 export async function saveOnboardingAction(
-  data: OnboardingPayload
+  data: OnboardingPayload,
+  explicitUserId?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const currentUserId = await getCurrentUserId();
+  const currentUserId = explicitUserId || (await getCurrentUserId());
   if (!currentUserId) {
     return { success: false, error: "Chưa đăng nhập" };
   }
 
+  const normalizedDistrict = normalizeDistrict(data.districtCode);
+  const sanitizedTags = sanitizeRequirementTags(data.requirementTags);
+  const preferredDistricts = (data.roomPreferences?.preferredDistrictCodes || []).map(normalizeDistrict);
+  const roomDistrict = normalizeDistrict(data.room?.districtCode);
+
   try {
-    await withSessionDb(currentUserId, async (client) => {
+    await withAdminDb(async (client) => {
       // 1. Upsert Profile
       await client.query(
         `
@@ -197,7 +240,7 @@ export async function saveOnboardingAction(
           data.occupation,
           data.schoolOrWorkplace,
           data.cityCode || "hn",
-          data.districtCode,
+          normalizedDistrict,
           data.bio,
           data.isSmoker,
           data.housingStatus,
@@ -226,7 +269,7 @@ export async function saveOnboardingAction(
           data.ageMax,
           data.ageIsDealbreaker,
           data.smokingPolicy,
-          data.requirementTags,
+          sanitizedTags,
         ]
       );
 
@@ -253,7 +296,7 @@ export async function saveOnboardingAction(
         `,
           [
             currentUserId,
-            data.room.districtCode,
+            roomDistrict,
             data.room.addressStreet,
             data.room.monthlyRent,
             data.room.roomType,
@@ -283,7 +326,7 @@ export async function saveOnboardingAction(
         `,
           [
             currentUserId,
-            data.roomPreferences.preferredDistrictCodes,
+            preferredDistricts,
             data.roomPreferences.budgetMin,
             data.roomPreferences.budgetMax,
             data.roomPreferences.roomTypes,
@@ -317,7 +360,13 @@ export async function saveOnboardingAction(
       }
     });
 
-    revalidatePath("/", "layout");
+    try {
+      revalidatePath("/", "layout");
+      revalidatePath("/discovery");
+      revalidatePath("/profile");
+      revalidatePath("/matches");
+    } catch {}
+
     return { success: true };
   } catch (err) {
     console.error("saveOnboardingAction error:", err);
@@ -351,8 +400,11 @@ export async function updateProfileAction(
     return { success: false, error: "Chưa đăng nhập" };
   }
 
+  const normalizedDistrict = normalizeDistrict(data.districtCode);
+  const sanitizedTags = data.requirementTags ? sanitizeRequirementTags(data.requirementTags) : undefined;
+
   try {
-    await withSessionDb(currentUserId, async (client) => {
+    await withAdminDb(async (client) => {
       await client.query(
         `
         update public.profiles
@@ -371,7 +423,7 @@ export async function updateProfileAction(
           data.fullName,
           data.occupation || null,
           data.schoolOrWorkplace || null,
-          data.districtCode,
+          normalizedDistrict,
           data.bio,
           data.isSmoker,
           currentUserId,
@@ -398,15 +450,18 @@ export async function updateProfileAction(
             data.ageMin ?? 18,
             data.ageMax ?? 30,
             data.smokingPolicy ?? "any",
-            data.requirementTags ?? [],
+            sanitizedTags ?? ["clean_tidy", "no_smoking"],
           ]
         );
       }
     });
 
-    revalidatePath("/profile");
-    revalidatePath("/profile/edit");
-    revalidatePath("/discovery");
+    try {
+      revalidatePath("/profile");
+      revalidatePath("/profile/edit");
+      revalidatePath("/discovery");
+    } catch {}
+
     return { success: true };
   } catch (err) {
     console.error("updateProfileAction error:", err);
@@ -432,7 +487,7 @@ export async function sendMessageAction(
   }
 
   try {
-    const result = await withSessionDb(currentUserId, async (client) => {
+    const result = await withAdminDb(async (client) => {
       const res = await client.query(
         `
         insert into public.messages (conversation_id, sender_id, body)

@@ -19,6 +19,9 @@ import {
   ShieldCheck,
   Edit3,
   MessageCircle,
+  UserPlus,
+  LogIn,
+  FlaskConical,
 } from "lucide-react";
 import { DEMO_USERS } from "@/lib/constants/demo-users";
 import { markNotificationsReadAction, signOutAction } from "@/app/actions";
@@ -108,12 +111,19 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
 
   const navLinks = [
     { href: "/discovery", label: "Khám phá", icon: Compass },
-    { href: "/matches", label: "Tin nhắn & Ghép đôi", icon: MessageCircle, badge: matchCount },
-    { href: "/questionnaire", label: "Bản khảo sát", icon: ClipboardList },
-    { href: "/profile", label: "Hồ sơ của tôi", icon: User },
-    ...(currentUser?.housingStatus === "has_room"
-      ? [{ href: "/room", label: "Phòng trọ", icon: Building }]
-      : []),
+    ...(currentUser
+      ? [
+          { href: "/matches", label: "Tin nhắn & Ghép đôi", icon: MessageCircle, badge: matchCount },
+          { href: "/questionnaire", label: "Bản khảo sát", icon: ClipboardList },
+          { href: "/profile", label: "Hồ sơ của tôi", icon: User },
+          ...(currentUser.housingStatus === "has_room"
+            ? [{ href: "/room", label: "Phòng trọ", icon: Building }]
+            : []),
+        ]
+      : [
+          { href: "/signup", label: "Đăng ký", icon: UserPlus },
+          { href: "/login", label: "Đăng nhập", icon: LogIn },
+        ]),
   ];
 
   return (
@@ -162,233 +172,309 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
           </nav>
         </div>
 
-        {/* Right Section: Notifications & Persona Switcher */}
+        {/* Right Section: Notifications & Account / Demo Switcher */}
         <div className="flex items-center space-x-2 sm:space-x-3">
-          {/* Notification Bell Dropdown */}
-          <div className="relative">
-            <button
-              onClick={handleOpenNotifications}
-              className="p-2 rounded-full border border-slate-200 hover:bg-slate-50 text-slate-600 relative transition-colors"
-              title="Thông báo"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-pulse">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {notifOpen && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-88 rounded-2xl bg-white shadow-xl border border-slate-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">
-                    Thông báo gần đây
-                  </span>
+          {currentUser ? (
+            <>
+              {/* Notification Bell Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={handleOpenNotifications}
+                  className="p-2 rounded-full border border-slate-200 hover:bg-slate-50 text-slate-600 relative transition-colors"
+                  title="Thông báo"
+                >
+                  <Bell className="w-4 h-4" />
                   {unreadCount > 0 && (
-                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                      {unreadCount} mới
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-pulse">
+                      {unreadCount}
                     </span>
                   )}
-                </div>
+                </button>
 
-                <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
-                  {notifications.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-slate-400">
-                      Chưa có thông báo nào.
+                {notifOpen && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-88 rounded-2xl bg-white shadow-xl border border-slate-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900">
+                        Thông báo gần đây
+                      </span>
+                      {unreadCount > 0 && (
+                        <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                          {unreadCount} mới
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    notifications.map((n) => {
-                      let title = "Thông báo mới";
-                      let desc = "";
-                      let icon = Bell;
 
-                      if (n.type === "mutual_match") {
-                        title = "Ghép đôi thành công! 🎉";
-                        desc = `Bạn và ${n.actor_name || "người dùng"} đã thích nhau.`;
-                        icon = Heart;
-                      } else if (n.type === "new_like") {
-                        title = "Lượt thích mới";
-                        desc = `${n.actor_name || "Một người dùng"} đã thích hồ sơ của bạn.`;
-                        icon = Sparkles;
-                      } else if (n.type === "verification_result") {
-                        title = "Xác thực danh tính";
-                        desc = "Hồ sơ của bạn đã được quản trị viên xác minh CCCD.";
-                        icon = CheckCircle2;
-                      }
-
-                      const Icon = icon;
-                      return (
-                        <div
-                          key={n.id}
-                          className={`p-3.5 px-4 text-xs transition-colors flex items-start space-x-3 ${
-                            !n.read_at ? "bg-blue-50/50" : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <div className="p-2 rounded-xl bg-blue-100 text-blue-600 flex-shrink-0 mt-0.5">
-                            <Icon className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-bold text-slate-900">{title}</div>
-                            <div className="text-slate-600 text-[11px] mt-0.5 leading-snug">
-                              {desc}
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-1">
-                              {new Date(n.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-                          </div>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
+                      {notifications.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-400">
+                          Chưa có thông báo nào.
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                      ) : (
+                        notifications.map((n) => {
+                          let title = "Thông báo mới";
+                          let desc = "";
+                          let icon = Bell;
 
-                <div className="pt-2 px-4 border-t border-slate-100 text-center">
-                  <Link
-                    href="/matches"
-                    onClick={() => setNotifOpen(false)}
-                    className="text-xs text-blue-600 font-semibold hover:underline"
-                  >
-                    Xem tất cả lượt ghép đôi →
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
+                          if (n.type === "mutual_match") {
+                            title = "Ghép đôi thành công! 🎉";
+                            desc = `Bạn và ${n.actor_name || "người dùng"} đã thích nhau.`;
+                            icon = Heart;
+                          } else if (n.type === "new_like") {
+                            title = "Lượt thích mới";
+                            desc = `${n.actor_name || "Một người dùng"} đã thích hồ sơ của bạn.`;
+                            icon = Sparkles;
+                          } else if (n.type === "verification_result") {
+                            title = "Xác thực danh tính";
+                            desc = "Hồ sơ của bạn đã được quản trị viên xác minh CCCD.";
+                            icon = CheckCircle2;
+                          }
 
-          <Link
-            href="/onboarding"
-            className="hidden sm:inline-flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-            <span>Onboarding (6 bước)</span>
-          </Link>
+                          const Icon = icon;
+                          return (
+                            <div
+                              key={n.id}
+                              className={`p-3.5 px-4 text-xs transition-colors flex items-start space-x-3 ${
+                                !n.read_at ? "bg-blue-50/50" : "hover:bg-slate-50"
+                              }`}
+                            >
+                              <div className="p-2 rounded-xl bg-blue-100 text-blue-600 flex-shrink-0 mt-0.5">
+                                <Icon className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="font-bold text-slate-900">{title}</div>
+                                <div className="text-slate-600 text-[11px] mt-0.5 leading-snug">
+                                  {desc}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-1">
+                                  {new Date(n.created_at).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
 
-          {/* User Switcher Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center space-x-2 pl-2 pr-2.5 py-1.5 rounded-full border border-slate-200 hover:border-slate-300 bg-slate-50 transition-all text-left"
-            >
-              <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold uppercase shadow-sm">
-                {currentUser?.displayName?.[0] || "U"}
-              </div>
-              <div className="hidden sm:block text-xs">
-                <div className="font-semibold text-slate-800 flex items-center gap-1">
-                  {currentUser?.displayName || "Khách"}
-                  {currentUser?.isVerified && (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 fill-blue-50 inline" />
-                  )}
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  {currentUser?.housingStatus === "has_room"
-                    ? "Có phòng"
-                    : "Tìm phòng"}
-                </div>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white shadow-xl border border-slate-200 py-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="px-3.5 py-1.5 border-b border-slate-100 mb-1">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    Chuyển đổi hồ sơ mẫu (Demo)
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    Đổi người dùng để kiểm tra bộ máy matching & like/pass
-                  </div>
-                </div>
-
-                <div className="max-h-60 overflow-y-auto px-1 space-y-0.5">
-                  {DEMO_USERS.map((u) => {
-                    const isCurrent = currentUser?.id === u.id;
-                    return (
-                      <button
-                        key={u.id}
-                        disabled={isPending}
-                        onClick={() => handleSelectUser(u.id)}
-                        className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
-                          isCurrent
-                            ? "bg-blue-50 text-blue-900 font-semibold"
-                            : "hover:bg-slate-50 text-slate-700"
-                        }`}
+                    <div className="pt-2 px-4 border-t border-slate-100 text-center">
+                      <Link
+                        href="/matches"
+                        onClick={() => setNotifOpen(false)}
+                        className="text-xs text-blue-600 font-semibold hover:underline"
                       >
-                        <div className="flex items-center space-x-2.5">
-                          <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                        Xem tất cả lượt ghép đôi →
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <Link
+                href="/onboarding"
+                className="hidden sm:inline-flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <span>Onboarding (6 bước)</span>
+              </Link>
+
+              {/* Logged in User Menu */}
+              <div className="relative">
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center space-x-2 pl-2 pr-2.5 py-1.5 rounded-full border border-slate-200 hover:border-slate-300 bg-slate-50 transition-all text-left"
+                >
+                  <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold uppercase shadow-sm">
+                    {currentUser.displayName?.[0] || "U"}
+                  </div>
+                  <div className="hidden sm:block text-xs">
+                    <div className="font-semibold text-slate-800 flex items-center gap-1">
+                      {currentUser.displayName}
+                      {currentUser.isVerified && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 fill-blue-50 inline" />
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {currentUser.housingStatus === "has_room"
+                        ? "Có phòng"
+                        : "Tìm phòng"}
+                    </div>
+                  </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white shadow-xl border border-slate-200 py-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-3.5 py-1.5 border-b border-slate-100 mb-1">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Chuyển đổi hồ sơ mẫu (Demo)
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        Đổi người dùng để kiểm tra bộ máy matching & like/pass
+                      </div>
+                    </div>
+
+                    <div className="max-h-56 overflow-y-auto px-1 space-y-0.5">
+                      {DEMO_USERS.map((u) => {
+                        const isCurrent = currentUser?.id === u.id;
+                        return (
+                          <button
+                            key={u.id}
+                            disabled={isPending}
+                            onClick={() => handleSelectUser(u.id)}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
                               isCurrent
-                                ? "bg-blue-600 text-white"
-                                : "bg-slate-200 text-slate-700"
+                                ? "bg-blue-50 text-blue-900 font-semibold"
+                                : "hover:bg-slate-50 text-slate-700"
                             }`}
                           >
-                            {u.displayName[0]}
-                          </div>
-                          <div>
-                            <div className="font-medium text-slate-900">
-                              {u.fullName}{" "}
-                              <span className="text-slate-400">({u.age}t)</span>
+                            <div className="flex items-center space-x-2.5">
+                              <div
+                                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                                  isCurrent
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-slate-200 text-slate-700"
+                                }`}
+                              >
+                                {u.displayName[0]}
+                              </div>
+                              <div>
+                                <div className="font-medium text-slate-900">
+                                  {u.fullName}{" "}
+                                  <span className="text-slate-400">({u.age}t)</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 line-clamp-1">
+                                  {u.roleDescription}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-[11px] text-slate-500 line-clamp-1">
-                              {u.roleDescription}
-                            </div>
-                          </div>
-                        </div>
-                        {isCurrent && (
-                          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                        )}
+                            {isCurrent && (
+                              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="border-t border-slate-100 mt-1.5 pt-1.5 px-2 space-y-0.5">
+                      <Link
+                        href="/profile/edit"
+                        onClick={() => setDropdownOpen(false)}
+                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Chỉnh sửa hồ sơ</span>
+                      </Link>
+
+                      <Link
+                        href="/verification"
+                        onClick={() => setDropdownOpen(false)}
+                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Xác minh CCCD</span>
+                      </Link>
+
+                      <Link
+                        href="/onboarding"
+                        onClick={() => setDropdownOpen(false)}
+                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Khảo sát lại Onboarding</span>
+                      </Link>
+
+                      <button
+                        onClick={async () => {
+                          setDropdownOpen(false);
+                          await signOutAction();
+                          router.push("/login");
+                          router.refresh();
+                        }}
+                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors text-left"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Đăng xuất tài khoản</span>
                       </button>
-                    );
-                  })}
-                </div>
-
-                <div className="border-t border-slate-100 mt-1.5 pt-1.5 px-2 space-y-0.5">
-                  <Link
-                    href="/profile/edit"
-                    onClick={() => setDropdownOpen(false)}
-                    className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Chỉnh sửa hồ sơ</span>
-                  </Link>
-
-                  <Link
-                    href="/verification"
-                    onClick={() => setDropdownOpen(false)}
-                    className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Xác minh CCCD</span>
-                  </Link>
-
-                  <Link
-                    href="/onboarding"
-                    onClick={() => setDropdownOpen(false)}
-                    className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>Khảo sát lại Onboarding</span>
-                  </Link>
-
-                  <button
-                    onClick={async () => {
-                      setDropdownOpen(false);
-                      await signOutAction();
-                      router.push("/login");
-                      router.refresh();
-                    }}
-                    className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors text-left"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Đăng xuất tài khoản</span>
-                  </button>
-                </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <>
+              {/* Demo Switcher for Evaluators / Guests */}
+              <div className="relative">
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition-all"
+                  title="Dùng thử tài khoản mẫu"
+                >
+                  <FlaskConical className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Dùng thử mẫu</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white shadow-xl border border-slate-200 py-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-3.5 py-1.5 border-b border-slate-100 mb-1">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Chọn tài khoản mẫu để thử nghiệm
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        Trải nghiệm tức thì hệ thống matching không cần đăng ký
+                      </div>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto px-1 space-y-0.5">
+                      {DEMO_USERS.map((u) => (
+                        <button
+                          key={u.id}
+                          disabled={isPending}
+                          onClick={() => handleSelectUser(u.id)}
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors hover:bg-blue-50 text-slate-700"
+                        >
+                          <div className="flex items-center space-x-2.5">
+                            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
+                              {u.displayName[0]}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-slate-900">
+                                {u.fullName}{" "}
+                                <span className="text-slate-400">({u.age}t)</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 line-clamp-1">
+                                {u.roleDescription}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Guest Login Button */}
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+              >
+                <LogIn className="w-3.5 h-3.5 text-slate-500" />
+                <span>Đăng nhập</span>
+              </Link>
+
+              {/* Guest Signup Button */}
+              <Link
+                href="/signup"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all hover:scale-105"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Đăng ký</span>
+              </Link>
+            </>
+          )}
         </div>
       </div>
 

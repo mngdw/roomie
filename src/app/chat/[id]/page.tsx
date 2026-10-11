@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
@@ -12,6 +12,9 @@ interface ChatPageProps {
 export default async function ChatPage({ params }: ChatPageProps) {
   const { id: conversationId } = await params;
   const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    redirect("/login");
+  }
 
   const conversationData = await withAdminDb(async (client) => {
     // 1. Verify access to conversation

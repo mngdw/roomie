@@ -51,6 +51,19 @@ interface OnboardingWizardProps {
   };
 }
 
+const DISTRICT_LABELS: Record<string, string> = {
+  "hn-thanh-xuan": "Thanh Xuân",
+  "hn-cau-giay": "Cầu Giấy",
+  "hn-dong-da": "Đống Đa",
+  "hn-hai-ba-trung": "Hai Bà Trưng",
+  "hn-ba-dinh": "Ba Đình",
+  "hn-hoang-mai": "Hoàng Mai",
+  "hn-nam-tu-liem": "Nam Từ Liêm",
+  "hn-bac-tu-liem": "Bắc Từ Liêm",
+  "hn-ha-dong": "Hà Đông",
+  "hn-tay-ho": "Tây Hồ",
+};
+
 export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -74,7 +87,7 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
   );
   const [cityCode] = useState("hn");
   const [districtCode, setDistrictCode] = useState(
-    initialData?.districtCode || "thanh_xuan"
+    initialData?.districtCode || "hn-thanh-xuan"
   );
   const [bio, setBio] = useState(
     initialData?.bio ||
@@ -94,10 +107,8 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
   >((initialData?.smokingPolicy as any) || "non_smoker_only");
   const [requirementTags, setRequirementTags] = useState<string[]>(
     initialData?.requirementTags || [
-      "khong_hut_thuoc",
-      "sach_se",
-      "sinh_vien",
-      "ngu_som",
+      "clean_tidy",
+      "no_smoking",
     ]
   );
   const [newTag, setNewTag] = useState("");
@@ -132,8 +143,8 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
   // Seeker preferences (if looking_for_room)
   const [budgetMax, setBudgetMax] = useState(initialData?.budgetMax || 2500000);
   const [preferredDistricts, setPreferredDistricts] = useState<string[]>([
-    "thanh_xuan",
-    "cau_giay",
+    "hn-thanh-xuan",
+    "hn-cau-giay",
   ]);
 
   // Step 5: 30 Questions Answers Map
@@ -419,11 +430,16 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                   onChange={(e) => setDistrictCode(e.target.value)}
                   className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="thanh_xuan">Thanh Xuân</option>
-                  <option value="cau_giay">Cầu Giấy</option>
-                  <option value="dong_da">Đống Đa</option>
-                  <option value="hai_ba_trung">Hai Bà Trưng</option>
-                  <option value="ba_dinh">Ba Đình</option>
+                  <option value="hn-thanh-xuan">Thanh Xuân</option>
+                  <option value="hn-cau-giay">Cầu Giấy</option>
+                  <option value="hn-dong-da">Đống Đa</option>
+                  <option value="hn-hai-ba-trung">Hai Bà Trưng</option>
+                  <option value="hn-ba-dinh">Ba Đình</option>
+                  <option value="hn-hoang-mai">Hoàng Mai</option>
+                  <option value="hn-nam-tu-liem">Nam Từ Liêm</option>
+                  <option value="hn-bac-tu-liem">Bắc Từ Liêm</option>
+                  <option value="hn-ha-dong">Hà Đông</option>
+                  <option value="hn-tay-ho">Tây Hồ</option>
                 </select>
               </div>
             </div>
@@ -574,49 +590,42 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">
-                Các thẻ yêu cầu / quy ước nhanh (#tags)
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Các tiêu chí bạn cùng phòng kỳ vọng (Chọn các tiêu chí phù hợp)
               </label>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {requirementTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200"
-                  >
-                    <span>#{tag}</span>
+              <p className="text-[11px] text-slate-500 mb-2.5">
+                Các tiêu chuẩn này sẽ được hệ thống đối chiếu để lọc và giải thích độ hòa hợp khi sống chung.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { code: "clean_tidy", label: "✨ Sạch sẽ & gọn gàng" },
+                  { code: "no_smoking", label: "🚭 Tuyệt đối không hút thuốc" },
+                  { code: "pays_on_time", label: "💵 Đóng tiền đúng hạn" },
+                  { code: "respects_privacy", label: "🔒 Tôn trọng không gian riêng" },
+                  { code: "share_costs", label: "🤝 Chia sẻ chi phí sòng phẳng" },
+                ].map((item) => {
+                  const isSelected = requirementTags.includes(item.code);
+                  return (
                     <button
+                      key={item.code}
                       type="button"
-                      onClick={() =>
-                        setRequirementTags(requirementTags.filter((t) => t !== tag))
-                      }
-                      className="hover:text-rose-600"
+                      onClick={() => {
+                        if (isSelected) {
+                          setRequirementTags(requirementTags.filter((t) => t !== item.code));
+                        } else {
+                          setRequirementTags([...requirementTags, item.code]);
+                        }
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                        isSelected
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20 font-semibold"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
                     >
-                      ×
+                      <span>{item.label}</span>
                     </button>
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  placeholder="Thêm thẻ (ví dụ: khong_dan_ban_ve)"
-                  className="text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (newTag.trim() && !requirementTags.includes(newTag.trim())) {
-                      setRequirementTags([...requirementTags, newTag.trim()]);
-                      setNewTag("");
-                    }
-                  }}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
-                >
-                  Thêm
-                </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -866,11 +875,16 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { code: "thanh_xuan", label: "Thanh Xuân" },
-                      { code: "cau_giay", label: "Cầu Giấy" },
-                      { code: "dong_da", label: "Đống Đa" },
-                      { code: "hai_ba_trung", label: "Hai Bà Trưng" },
-                      { code: "ba_dinh", label: "Ba Đình" },
+                      { code: "hn-thanh-xuan", label: "Thanh Xuân" },
+                      { code: "hn-cau-giay", label: "Cầu Giấy" },
+                      { code: "hn-dong-da", label: "Đống Đa" },
+                      { code: "hn-hai-ba-trung", label: "Hai Bà Trưng" },
+                      { code: "hn-ba-dinh", label: "Ba Đình" },
+                      { code: "hn-hoang-mai", label: "Hoàng Mai" },
+                      { code: "hn-nam-tu-liem", label: "Nam Từ Liêm" },
+                      { code: "hn-bac-tu-liem", label: "Bắc Từ Liêm" },
+                      { code: "hn-ha-dong", label: "Hà Đông" },
+                      { code: "hn-tay-ho", label: "Tây Hồ" },
                     ].map((d) => {
                       const isSel = preferredDistricts.includes(d.code);
                       return (
@@ -1061,7 +1075,7 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                 {displayName} ({fullName})
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
-                {gender === "female" ? "Nữ" : "Nam"} • {occupation} • {districtCode}
+                {gender === "female" ? "Nữ" : "Nam"} • {occupation} • {DISTRICT_LABELS[districtCode] || districtCode}
               </div>
             </div>
 

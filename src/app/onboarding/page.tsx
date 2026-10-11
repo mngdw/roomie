@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
@@ -5,6 +6,9 @@ import { OnboardingWizard } from "./OnboardingWizard";
 
 export default async function OnboardingPage() {
   const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    redirect("/login");
+  }
 
   const user = await withAdminDb(async (client) => {
     return await fetchCandidateUser(client, currentUserId);

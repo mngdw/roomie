@@ -44,7 +44,7 @@ export default async function CandidateProfilePage({
 
   const { candidate, viewer } = await withAdminDb(async (client) => {
     const c = await fetchCandidateUser(client, id);
-    const v = await fetchCandidateUser(client, currentUserId);
+    const v = currentUserId ? await fetchCandidateUser(client, currentUserId) : null;
     return { candidate: c, viewer: v };
   });
 

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
@@ -30,6 +30,9 @@ export default async function CompatibilityPage({
 }: CompatibilityPageProps) {
   const { id } = await params;
   const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    redirect("/login");
+  }
   const currentUser = await getCurrentUser();
 
   const { candidate, viewer } = await withAdminDb(async (client) => {

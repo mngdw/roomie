@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
@@ -17,6 +18,9 @@ import {
 
 export default async function MatchesPage() {
   const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    redirect("/login");
+  }
   const currentUser = await getCurrentUser();
 
   const viewer = await withAdminDb(async (client) => {

@@ -11,6 +11,8 @@ import {
   ArrowRight,
   TrendingUp,
   Layers,
+  UserPlus,
+  LogIn,
 } from "lucide-react";
 import { CATEGORY_META, CATEGORY_WEIGHTS } from "@/lib/matching/constants";
 
@@ -46,34 +48,69 @@ export default async function LandingPage() {
 
           {/* Main Action CTAs */}
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3.5">
-            <Link
-              href="/discovery"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xl shadow-blue-500/25 transition-all transform hover:-translate-y-0.5"
-            >
-              <Compass className="w-5 h-5" />
-              <span>Khám phá ứng viên phù hợp</span>
-            </Link>
+            {currentUser ? (
+              <>
+                <Link
+                  href="/discovery"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xl shadow-blue-500/25 transition-all transform hover:-translate-y-0.5"
+                >
+                  <Compass className="w-5 h-5" />
+                  <span>Khám phá ứng viên phù hợp</span>
+                </Link>
 
-            <Link
-              href="/onboarding"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all"
-            >
-              <Layers className="w-5 h-5 text-blue-600" />
-              <span>Bắt đầu khảo sát (6 bước)</span>
-            </Link>
+                <Link
+                  href="/onboarding"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all"
+                >
+                  <Layers className="w-5 h-5 text-blue-600" />
+                  <span>Khảo sát lại Onboarding (6 bước)</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/signup"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xl shadow-blue-500/25 transition-all transform hover:-translate-y-0.5"
+                >
+                  <UserPlus className="w-5 h-5" />
+                  <span>Đăng ký tài khoản miễn phí</span>
+                </Link>
+
+                <Link
+                  href="/discovery"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all"
+                >
+                  <Compass className="w-5 h-5 text-blue-600" />
+                  <span>Xem trước danh sách bạn cùng phòng</span>
+                </Link>
+
+                <Link
+                  href="/login"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition-all shadow-sm"
+                >
+                  <LogIn className="w-5 h-5 text-slate-500" />
+                  <span>Đăng nhập</span>
+                </Link>
+              </>
+            )}
           </div>
 
-          {/* Current Persona Pill */}
-          {currentUser && (
+          {/* Current Persona / Guest Pill */}
+          {currentUser ? (
             <div className="mt-8 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 text-xs text-slate-600 shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Đang trải nghiệm với tư cách:</span>
+              <span>Đang đăng nhập:</span>
               <strong className="text-slate-900 font-bold">
                 {currentUser.displayName}
               </strong>
               <span className="text-slate-400">
                 ({currentUser.housingStatus === "has_room" ? "Có phòng" : "Tìm phòng"})
               </span>
+            </div>
+          ) : (
+            <div className="mt-8 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 text-xs text-slate-500 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span>Chế độ Khách (Chưa đăng nhập) · Đăng ký để bắt đầu ghép đôi thực tế</span>
             </div>
           )}
         </div>
