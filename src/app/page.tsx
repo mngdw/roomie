@@ -13,6 +13,7 @@ import {
   Layers,
   UserPlus,
   LogIn,
+  LogOut,
 } from "lucide-react";
 import { CATEGORY_META, CATEGORY_WEIGHTS } from "@/lib/matching/constants";
 
@@ -63,7 +64,15 @@ export default async function LandingPage() {
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all"
                 >
                   <Layers className="w-5 h-5 text-blue-600" />
-                  <span>Khảo sát lại Onboarding (6 bước)</span>
+                  <span>Cập nhật khảo sát Onboarding</span>
+                </Link>
+
+                <Link
+                  href="/api/auth/switch-redirect?userId=logout"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-700 font-semibold text-sm transition-all"
+                >
+                  <LogOut className="w-4 h-4 text-rose-500" />
+                  <span>Đăng xuất</span>
                 </Link>
               </>
             ) : (
@@ -73,30 +82,30 @@ export default async function LandingPage() {
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xl shadow-blue-500/25 transition-all transform hover:-translate-y-0.5"
                 >
                   <UserPlus className="w-5 h-5" />
-                  <span>Đăng ký tài khoản miễn phí</span>
-                </Link>
-
-                <Link
-                  href="/discovery"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all"
-                >
-                  <Compass className="w-5 h-5 text-blue-600" />
-                  <span>Xem trước danh sách bạn cùng phòng</span>
+                  <span>Đăng ký tài khoản</span>
                 </Link>
 
                 <Link
                   href="/login"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition-all shadow-sm"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all"
                 >
                   <LogIn className="w-5 h-5 text-slate-500" />
                   <span>Đăng nhập</span>
+                </Link>
+
+                <Link
+                  href="/discovery"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold text-sm transition-all"
+                >
+                  <Compass className="w-5 h-5 text-blue-600" />
+                  <span>Xem trước cộng đồng</span>
                 </Link>
               </>
             )}
           </div>
 
-          {/* Current Persona / Guest Pill */}
-          {currentUser ? (
+          {/* Current User Status (only when logged in) */}
+          {currentUser && (
             <div className="mt-8 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 text-xs text-slate-600 shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Đang đăng nhập:</span>
@@ -106,11 +115,6 @@ export default async function LandingPage() {
               <span className="text-slate-400">
                 ({currentUser.housingStatus === "has_room" ? "Có phòng" : "Tìm phòng"})
               </span>
-            </div>
-          ) : (
-            <div className="mt-8 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 text-xs text-slate-500 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <span>Chế độ Khách (Chưa đăng nhập) · Đăng ký để bắt đầu ghép đôi thực tế</span>
             </div>
           )}
         </div>

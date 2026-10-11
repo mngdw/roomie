@@ -14,6 +14,10 @@ import {
   Building,
   Check,
   AlertCircle,
+  Upload,
+  Image as ImageIcon,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import {
   QUESTIONNAIRE_QUESTIONS,
@@ -43,6 +47,7 @@ interface OnboardingWizardProps {
     roomType?: string;
     facilities?: string[];
     budgetMax?: number;
+    roomImages?: string[];
     existingAnswers?: Array<{
       questionNumber: number;
       optionValues: number[];
@@ -139,6 +144,36 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
     ]
   );
   const [roomDesc, setRoomDesc] = useState("Phòng rộng rãi, ban công thoáng mát.");
+  const [roomImages, setRoomImages] = useState<string[]>(
+    initialData?.roomImages || []
+  );
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const newFiles = Array.from(files);
+    const remainingSlots = 6 - roomImages.length;
+    if (remainingSlots <= 0) {
+      alert("Bạn đã tải lên tối đa 6 ảnh phòng trọ.");
+      return;
+    }
+
+    const filesToProcess = newFiles.slice(0, remainingSlots);
+    filesToProcess.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          setRoomImages((prev) => [...prev, result]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeImage = (index: number) => {
+    setRoomImages((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // Seeker preferences (if looking_for_room)
   const [budgetMax, setBudgetMax] = useState(initialData?.budgetMax || 2500000);
@@ -248,6 +283,7 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                 availableFrom,
                 facilities,
                 description: roomDesc,
+                images: roomImages,
               }
             : undefined,
         roomPreferences:
@@ -840,6 +876,91 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                     })}
                   </div>
                 </div>
+
+                {/* Upload Image Section */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Hình ảnh phòng trọ (Tải lên tối đa 6 ảnh)</span>
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {roomImages.length}/6 ảnh
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-3">
+                    Tải lên ảnh thực tế của căn phòng (phòng ngủ, ban công, phòng khách, nhà vệ sinh) giúp tăng độ tin cậy và thu hút bạn cùng phòng phù hợp.
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {/* Render uploaded image thumbnails */}
+                    {roomImages.map((img, idx) => (
+                      <div
+                        key={idx}
+                        className="relative group aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm"
+                      >
+                        <img
+                          src={img}
+                          alt={`Ảnh phòng ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        {idx === 0 && (
+                          <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-blue-600 text-white text-[9px] font-bold shadow-sm">
+                            Ảnh bìa
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeImage(idx)}
+                          className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-black/60 hover:bg-rose-600 text-white transition-colors"
+                          title="Xóa ảnh"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Add Photo Button (if < 6) */}
+                    {roomImages.length < 6 && (
+                      <label
+                        htmlFor="room-image-input"
+                        className="flex flex-col items-center justify-center aspect-square rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/50 cursor-pointer transition-all p-3 text-center group"
+                      >
+                        <div className="w-9 h-9 rounded-xl bg-white group-hover:bg-blue-100 text-slate-500 group-hover:text-blue-600 flex items-center justify-center mb-1.5 shadow-sm transition-colors">
+                          <Plus className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700 group-hover:text-blue-700">
+                          Thêm ảnh phòng
+                        </span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">
+                          Tối đa 6 ảnh
+                        </span>
+                        <input
+                          id="room-image-input"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                {/* Room Description */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Mô tả thêm về phòng & không gian sống
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={roomDesc}
+                    onChange={(e) => setRoomDesc(e.target.value)}
+                    placeholder="Phòng rộng rãi, thoáng mát, ban công đón nắng, giờ giấc tự do, an ninh tốt..."
+                    className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -1084,13 +1205,36 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                 Tình trạng & Khảo sát
               </div>
               <div className="text-sm font-bold text-slate-800">
-                {housingStatus === "has_room" ? "Đã có phòng" : "Đang tìm phòng"}
+                {housingStatus === "has_room" ? "Đã có phòng sẵn" : "Đang tìm phòng"}
               </div>
               <div className="text-xs text-emerald-600 font-semibold mt-0.5">
                 Đã trả lời {answersMap.size}/30 câu hỏi tương thích
               </div>
+              {housingStatus === "has_room" && (
+                <div className="text-[11px] text-blue-600 font-medium mt-1">
+                  Đã tải lên {roomImages.length} ảnh phòng trọ
+                </div>
+              )}
             </div>
           </div>
+
+          {housingStatus === "has_room" && roomImages.length > 0 && (
+            <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+              <div className="text-xs font-semibold text-slate-700 mb-2">
+                Ảnh phòng trọ đã tải lên ({roomImages.length} ảnh):
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {roomImages.map((img, i) => (
+                  <img
+                    key={i}
+                    src={img}
+                    alt={`Ảnh phòng ${i + 1}`}
+                    className="w-16 h-16 rounded-xl object-cover border border-slate-200 shadow-sm"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           <button
             type="button"

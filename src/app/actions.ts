@@ -136,6 +136,7 @@ export interface OnboardingPayload {
     availableFrom: string;
     facilities: string[];
     description: string;
+    images?: string[];
   };
 
   // Step 4B: Room preferences (if looking_for_room)
@@ -275,7 +276,7 @@ export async function saveOnboardingAction(
 
       // 3. Housing details based on status
       if (data.housingStatus === "has_room" && data.room) {
-        await client.query(
+        const roomRes = await client.query(
           `
           insert into public.rooms (
             owner_id, city_code, district_code, address_street, monthly_rent,
@@ -293,6 +294,7 @@ export async function saveOnboardingAction(
             facilities = excluded.facilities,
             description = excluded.description,
             is_published = true
+          returning id
         `,
           [
             currentUserId,
@@ -307,6 +309,21 @@ export async function saveOnboardingAction(
             data.room.description,
           ]
         );
+
+        const roomId = roomRes.rows[0]?.id;
+        if (roomId && data.room.images && Array.isArray(data.room.images) && data.room.images.length > 0) {
+          await client.query("delete from public.room_images where room_id = $1", [roomId]);
+          const imgs = data.room.images.slice(0, 10);
+          for (let i = 0; i < imgs.length; i++) {
+            const storagePath = `${currentUserId}/room_${i}_${Date.now()}.jpg`;
+            await client.query(
+              `insert into public.room_images (room_id, kind, storage_path, position)
+               values ($1, 'image', $2, $3)
+               on conflict do nothing`,
+              [roomId, storagePath, i]
+            );
+          }
+        }
       } else if (data.housingStatus === "looking_for_room" && data.roomPreferences) {
         await client.query(
           `

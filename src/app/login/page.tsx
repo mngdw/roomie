@@ -3,8 +3,7 @@
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { DEMO_USERS } from "@/lib/constants/demo-users";
-import { Home, LogIn, Sparkles, AlertCircle } from "lucide-react";
+import { Home, LogIn, AlertCircle } from "lucide-react";
 import { signInAction } from "@/app/actions";
 
 export default function LoginPage() {
@@ -13,19 +12,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  const handleSelectDemoUser = async (userId: string) => {
-    setError(null);
-    startTransition(async () => {
-      await fetch("/api/auth/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      router.push("/discovery");
-      router.refresh();
-    });
-  };
 
   const handleStandardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,33 +97,6 @@ export default function LoginPage() {
               <span>{isPending ? "Đang đăng nhập..." : "Đăng nhập"}</span>
             </button>
           </form>
-
-          {/* Quick Demo Personas 1-Click Login */}
-          <div className="mt-6 pt-6 border-t border-slate-100">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-              <span>Hoặc trải nghiệm nhanh (Tài khoản mẫu)</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_USERS.slice(0, 4).map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => handleSelectDemoUser(u.id)}
-                  disabled={isPending}
-                  className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-left transition-all"
-                >
-                  <div className="font-bold text-xs text-slate-900">
-                    {u.displayName} ({u.age}t)
-                  </div>
-                  <div className="text-[10px] text-slate-500 line-clamp-1">
-                    {u.housingStatus === "has_room" ? "Có phòng" : "Tìm phòng"}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Signup Link */}
           <div className="mt-6 text-center text-xs text-slate-500">
