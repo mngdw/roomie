@@ -22,7 +22,6 @@ import {
   UserPlus,
   LogIn,
   FlaskConical,
-  Database,
 } from "lucide-react";
 import { DEMO_USERS } from "@/lib/constants/demo-users";
 import { markNotificationsReadAction, signOutAction } from "@/app/actions";
@@ -125,7 +124,6 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
           { href: "/signup", label: "Đăng ký", icon: UserPlus },
           { href: "/login", label: "Đăng nhập", icon: LogIn },
         ]),
-    { href: "/admin", label: "Quản trị", icon: Database },
   ];
 
   return (
@@ -387,14 +385,6 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
                         <span>Khảo sát lại Onboarding</span>
                       </Link>
 
-                      <Link
-                        href="/admin"
-                        onClick={() => setDropdownOpen(false)}
-                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-purple-700 hover:bg-purple-50 transition-colors"
-                      >
-                        <Database className="w-3.5 h-3.5" />
-                        <span>Trang Quản trị (Admin)</span>
-                      </Link>
 
                       <button
                         onClick={async () => {
