@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAdminDb } from "@/lib/server/db";
+import { verifyAdminSession } from "@/lib/server/admin-auth";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire/catalog.generated";
 
 /**
@@ -7,6 +8,14 @@ import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire/catalog.generated";
  * GET /api/admin/export?type=users | answers
  */
 export async function GET(req: Request) {
+  const isAdmin = await verifyAdminSession();
+  if (!isAdmin) {
+    return NextResponse.json(
+      { success: false, error: "403 Forbidden: Yêu cầu quyền Quản trị viên để xuất dữ liệu." },
+      { status: 403 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") || "users";
 

@@ -1,9 +1,17 @@
 import { withAdminDb } from "@/lib/server/db";
+import { verifyAdminSession } from "@/lib/server/admin-auth";
 import { AdminDashboard, type AdminUserRecord } from "./AdminDashboard";
+import { AdminLoginGate } from "./AdminLoginGate";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  const isAdmin = await verifyAdminSession();
+
+  if (!isAdmin) {
+    return <AdminLoginGate />;
+  }
+
   const users: AdminUserRecord[] = await withAdminDb(async (client) => {
     // 1. Fetch all users from auth.users and profiles
     const usersRes = await client.query(`

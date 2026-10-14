@@ -859,3 +859,28 @@ export async function getCandidateNoteAction(candidateId: string): Promise<{
   }
 }
 
+/**
+ * Admin portal authentication action
+ */
+export async function adminLoginAction(
+  passcode: string,
+  email?: string
+): Promise<{ success: boolean; error?: string }> {
+  const { authenticateAdmin } = await import("@/lib/server/admin-auth");
+  const res = await authenticateAdmin(passcode, email);
+  if (res.success) {
+    revalidatePath("/admin");
+  }
+  return res;
+}
+
+/**
+ * Admin logout action
+ */
+export async function adminLogoutAction(): Promise<{ success: boolean }> {
+  const { clearAdminSession } = await import("@/lib/server/admin-auth");
+  await clearAdminSession();
+  revalidatePath("/admin");
+  return { success: true };
+}
+
