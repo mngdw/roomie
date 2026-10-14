@@ -279,20 +279,20 @@ export async function saveOnboardingAction(
         const roomRes = await client.query(
           `
           insert into public.rooms (
-            owner_id, city_code, district_code, address_street, monthly_rent,
+            owner_id, city_code, district_code, address_line, monthly_rent,
             room_type, capacity_total, current_occupants, available_from,
-            facilities, description, is_published
+            facilities, notes, is_published
           ) values ($1, 'hn', $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
-          on conflict (owner_id) do update set
+          on conflict (owner_id) where is_published do update set
             district_code = excluded.district_code,
-            address_street = excluded.address_street,
+            address_line = excluded.address_line,
             monthly_rent = excluded.monthly_rent,
             room_type = excluded.room_type,
             capacity_total = excluded.capacity_total,
             current_occupants = excluded.current_occupants,
             available_from = excluded.available_from,
             facilities = excluded.facilities,
-            description = excluded.description,
+            notes = excluded.notes,
             is_published = true
           returning id
         `,

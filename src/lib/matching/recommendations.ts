@@ -639,9 +639,16 @@ export async function getDiscoveryFeed(
     (a, b) => b.compatibility.finalScore - a.compatibility.finalScore
   );
 
-  // If topRecommendations is empty, pick top matches from allCandidates
-  if (topRecommendations.length === 0 && allCandidates.length > 0) {
-    topRecommendations = allCandidates.slice(0, Math.min(4, allCandidates.length));
+  // Ensure top recommendations has at least top 3-4 matches with highest compatibility scores
+  const topIds = new Set(topRecommendations.map((r) => r.candidate.userId));
+  if (topRecommendations.length < 4 && allCandidates.length > 0) {
+    for (const cand of allCandidates) {
+      if (!topIds.has(cand.candidate.userId)) {
+        topRecommendations.push(cand);
+        topIds.add(cand.candidate.userId);
+        if (topRecommendations.length >= 4) break;
+      }
+    }
   }
 
   return {

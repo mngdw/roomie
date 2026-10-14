@@ -304,8 +304,7 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
 
       const res = await saveOnboardingAction(payload);
       if (res.success) {
-        router.push("/discovery?completed=true");
-        router.refresh();
+        window.location.href = "/discovery?completed=true";
       } else {
         setErrorMsg(res.error || "Có lỗi xảy ra khi lưu hồ sơ.");
       }
