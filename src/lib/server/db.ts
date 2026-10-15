@@ -22,15 +22,15 @@ export async function getDbPool(): Promise<pg.Pool> {
     const dbUrl =
       process.env.DATABASE_URL ||
       (isProd
-        ? "postgresql://postgres.pdikiegygpmphljioepy:uH2t7klyNnatHFoV@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
+        ? "postgresql://postgres.pdikiegygpmphljioepy:uH2t7klyNnatHFoV@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
         : null);
 
     if (dbUrl) {
       pool = new pg.Pool({
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
-        max: 20,
-        idleTimeoutMillis: 30000,
+        max: 5,
+        idleTimeoutMillis: 10000,
         connectionTimeoutMillis: 10000,
       });
     } else {

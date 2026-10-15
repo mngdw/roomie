@@ -13,6 +13,11 @@ import {
   Calendar,
   DollarSign,
   Coffee,
+  PhoneCall,
+  Mail,
+  Copy,
+  Check,
+  X,
 } from "lucide-react";
 import { MatchScoreBadge } from "@/components/MatchScoreBadge";
 import { sendMessageAction } from "@/app/actions";
@@ -42,6 +47,8 @@ export function ChatClient({
 }: ChatClientProps) {
   const [messages, setMessages] = useState<MessageItem[]>(initialMessages);
   const [inputText, setInputText] = useState("");
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +93,12 @@ export function ChatClient({
     "Cuối tuần này bạn có rảnh để qua xem phòng trực tiếp không?",
   ];
 
+  const copyToClipboard = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col h-[calc(100vh-5rem)]">
       {/* Chat Header */}
@@ -129,7 +142,7 @@ export function ChatClient({
           </div>
         </div>
 
-        {/* Right side: Match Badge & Profile Link */}
+        {/* Right side: Match Badge, Contact & Profile Link */}
         <div className="flex items-center gap-2">
           {compatibility && (
             <Link
@@ -139,6 +152,15 @@ export function ChatClient({
               <MatchScoreBadge score={compatibility.finalScore} size="sm" />
             </Link>
           )}
+
+          <button
+            onClick={() => setContactModalOpen(true)}
+            className="p-2 px-2.5 sm:px-3 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+            title="Xem số điện thoại, Zalo, Email"
+          >
+            <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Liên hệ</span>
+          </button>
 
           <Link
             href={`/profile/${partner.userId}`}
@@ -244,6 +266,131 @@ export function ChatClient({
           </button>
         </form>
       </div>
+
+      {/* Contact Details Modal */}
+      {contactModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setContactModalOpen(false)}
+              className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              aria-label="Đóng"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xl border border-emerald-200">
+                <PhoneCall className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Thông tin liên hệ trực tiếp
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Bạn cùng phòng: <strong className="text-slate-800">{partner.displayName}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* Phone / Zalo */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Số điện thoại / Zalo</span>
+                  {partner.phone && (
+                    <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full">
+                      Sẵn sàng
+                    </span>
+                  )}
+                </div>
+                {partner.phone ? (
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="text-sm font-bold text-slate-900 font-mono">
+                      {partner.phone}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={`tel:${partner.phone}`}
+                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors"
+                      >
+                        Gọi ngay
+                      </a>
+                      <a
+                        href={`https://zalo.me/${partner.phone.replace(/[^0-9]/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors"
+                      >
+                        Mở Zalo
+                      </a>
+                      <button
+                        onClick={() => copyToClipboard(partner.phone || "", "phone")}
+                        className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600"
+                        title="Sao chép"
+                      >
+                        {copiedField === "phone" ? (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">
+                    Thành viên chưa thêm số điện thoại. Bạn có thể trò chuyện trực tiếp qua khung chat này hoặc Email nhé!
+                  </p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Email tài khoản
+                </div>
+                {partner.email ? (
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="text-xs font-semibold text-slate-900 truncate">
+                      {partner.email}
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <a
+                        href={`mailto:${partner.email}`}
+                        className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition-colors"
+                      >
+                        Gửi mail
+                      </a>
+                      <button
+                        onClick={() => copyToClipboard(partner.email || "", "email")}
+                        className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600"
+                        title="Sao chép"
+                      >
+                        {copiedField === "email" ? (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">Chưa có thông tin email.</p>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => setContactModalOpen(false)}
+                  className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

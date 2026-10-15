@@ -86,6 +86,10 @@ export function DiscoveryView({
     id: string;
     displayName: string;
     score?: number;
+    conversationId?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    zalo?: string | null;
   }>({ id: "", displayName: "" });
 
   const handleLike = async (
@@ -99,6 +103,10 @@ export function DiscoveryView({
         id: targetUserId,
         displayName: targetName,
         score,
+        conversationId: res.conversationId,
+        email: res.contactInfo?.email,
+        phone: res.contactInfo?.phone,
+        zalo: res.contactInfo?.zalo,
       });
       setMatchModalOpen(true);
       return true;

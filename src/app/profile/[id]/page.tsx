@@ -5,7 +5,7 @@ import { fetchCandidateUser } from "@/lib/matching/recommendations";
 import { scorePair } from "@/lib/matching/scoring";
 import { CandidateProfileHeader } from "@/components/CandidateProfileHeader";
 import { CandidateNoteCard } from "@/components/CandidateNoteCard";
-import { getCandidateNoteAction } from "@/app/actions";
+import { getCandidateNoteAction, getRelationshipStatusAction } from "@/app/actions";
 import {
   Heart,
   Clock,
@@ -82,12 +82,15 @@ export default async function CandidateProfilePage({
 
   const isLifestyleTab = tab === "lifestyle";
 
+  const relationship = currentUserId ? await getRelationshipStatusAction(id) : undefined;
+
   return (
     <div className="min-h-screen bg-slate-50">
       <CandidateProfileHeader
         candidate={candidate}
         compatibility={compatibility}
         currentUser={currentUser}
+        initialRelationship={relationship?.success ? relationship : undefined}
       />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">

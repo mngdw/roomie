@@ -10,7 +10,7 @@ import { CompatibilityBars } from "@/components/CompatibilityBars";
 import { CompatibilityComparisonTable } from "@/components/CompatibilityComparisonTable";
 import { RoommateAgreementAdvice } from "@/components/RoommateAgreementAdvice";
 import { CandidateNoteCard } from "@/components/CandidateNoteCard";
-import { getCandidateNoteAction } from "@/app/actions";
+import { getCandidateNoteAction, getRelationshipStatusAction } from "@/app/actions";
 import {
   Sparkles,
   CheckCircle2,
@@ -55,6 +55,7 @@ export default async function CompatibilityPage({
 
   // Fetch private evaluation note for this candidate
   const existingNote = await getCandidateNoteAction(id);
+  const relationship = currentUserId ? await getRelationshipStatusAction(id) : undefined;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -62,6 +63,7 @@ export default async function CompatibilityPage({
         candidate={candidate}
         compatibility={compatibility}
         currentUser={currentUser}
+        initialRelationship={relationship?.success ? relationship : undefined}
       />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">

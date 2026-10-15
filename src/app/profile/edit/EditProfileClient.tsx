@@ -23,6 +23,8 @@ interface EditProfileClientProps {
     districtCode?: string;
     bio?: string;
     isSmoker: boolean;
+    phone?: string;
+    zalo?: string;
     acceptedGenders?: string[];
     ageMin?: number;
     ageMax?: number;
@@ -49,6 +51,8 @@ export function EditProfileClient({ initialData }: EditProfileClientProps) {
   );
   const [bio, setBio] = useState(initialData.bio || "");
   const [isSmoker, setIsSmoker] = useState(initialData.isSmoker || false);
+  const [phone, setPhone] = useState(initialData.phone || "");
+  const [zalo, setZalo] = useState(initialData.zalo || "");
 
   const [acceptedGenders, setAcceptedGenders] = useState<
     Array<"male" | "female" | "other">
@@ -87,6 +91,8 @@ export function EditProfileClient({ initialData }: EditProfileClientProps) {
         districtCode,
         bio,
         isSmoker,
+        phone: phone.trim() || undefined,
+        zalo: zalo.trim() || undefined,
         acceptedGenders,
         ageMin,
         ageMax,
@@ -219,6 +225,40 @@ export function EditProfileClient({ initialData }: EditProfileClientProps) {
                   <option value="hai_ba_trung">Hai Bà Trưng</option>
                   <option value="ba_dinh">Ba Đình</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Số điện thoại liên hệ
+                </label>
+                <input
+                  type="tel"
+                  placeholder="Ví dụ: 0912345678"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Chỉ bạn cùng phòng ghép đôi hai chiều mới có thể xem
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Số Zalo (nếu khác SĐT)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: 0912345678 hoặc link Zalo"
+                  value={zalo}
+                  onChange={(e) => setZalo(e.target.value)}
+                  className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Giúp bạn cùng phòng liên hệ trao đổi thuận tiện hơn
+                </span>
               </div>
             </div>
 

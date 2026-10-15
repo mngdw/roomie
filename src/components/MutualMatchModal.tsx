@@ -2,7 +2,17 @@
 
 import React from "react";
 import Link from "next/link";
-import { Heart, Sparkles, MessageCircle, ArrowRight, X } from "lucide-react";
+import {
+  Heart,
+  Sparkles,
+  MessageCircle,
+  ArrowRight,
+  X,
+  PhoneCall,
+  Mail,
+  Copy,
+  Check,
+} from "lucide-react";
 
 interface MutualMatchModalProps {
   isOpen: boolean;
@@ -12,6 +22,10 @@ interface MutualMatchModalProps {
     displayName: string;
     avatarPath?: string | null;
     score?: number;
+    conversationId?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    zalo?: string | null;
   };
   currentUser?: {
     displayName?: string;
@@ -25,7 +39,19 @@ export function MutualMatchModal({
   targetUser,
   currentUser,
 }: MutualMatchModalProps) {
+  const [copiedField, setCopiedField] = React.useState<string | null>(null);
+
   if (!isOpen) return null;
+
+  const copyToClipboard = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
+  const chatHref = targetUser.conversationId
+    ? `/chat/${targetUser.conversationId}`
+    : "/matches";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -69,21 +95,87 @@ export function MutualMatchModal({
         </div>
 
         {targetUser.score !== undefined && (
-          <div className="mb-6 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+          <div className="mb-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
             <span>Chỉ số tương thích:</span>
             <span className="text-sm">{Math.round(targetUser.score)}%</span>
+          </div>
+        )}
+
+        {/* Contact Info Card */}
+        {(targetUser.email || targetUser.phone || targetUser.zalo) && (
+          <div className="mb-5 p-3.5 bg-blue-50/80 border border-blue-100 rounded-2xl text-left text-xs space-y-2.5">
+            <div className="font-bold text-blue-900 flex items-center gap-1.5 text-xs">
+              <PhoneCall className="w-3.5 h-3.5 text-blue-600" />
+              <span>Thông tin liên hệ trực tiếp:</span>
+            </div>
+
+            {targetUser.phone && (
+              <div className="flex items-center justify-between gap-2 text-slate-700 bg-white p-2 rounded-xl border border-blue-100/80">
+                <div className="flex items-center gap-1.5 truncate">
+                  <PhoneCall className="w-3.5 h-3.5 text-slate-400" />
+                  <span>SĐT / Zalo: <strong>{targetUser.phone}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <a
+                    href={`tel:${targetUser.phone}`}
+                    className="text-[11px] bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-0.5 rounded-lg font-semibold"
+                  >
+                    Gọi
+                  </a>
+                  <button
+                    onClick={() => copyToClipboard(targetUser.phone || "", "phone")}
+                    className="text-[11px] text-slate-600 hover:text-slate-900 p-1"
+                    title="Sao chép"
+                  >
+                    {copiedField === "phone" ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {targetUser.email && (
+              <div className="flex items-center justify-between gap-2 text-slate-700 bg-white p-2 rounded-xl border border-blue-100/80">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="truncate">Email: <strong>{targetUser.email}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <a
+                    href={`mailto:${targetUser.email}`}
+                    className="text-[11px] bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-0.5 rounded-lg font-semibold"
+                  >
+                    Gửi mail
+                  </a>
+                  <button
+                    onClick={() => copyToClipboard(targetUser.email || "", "email")}
+                    className="text-[11px] text-slate-600 hover:text-slate-900 p-1"
+                    title="Sao chép"
+                  >
+                    {copiedField === "email" ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Action Buttons */}
         <div className="space-y-2.5">
           <Link
-            href="/matches"
+            href={chatHref}
             onClick={onClose}
             className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-md shadow-blue-500/25 transition-all"
           >
             <MessageCircle className="w-4 h-4" />
-            <span>Trò chuyện ngay</span>
+            <span>Nhắn tin ngay trên ROOMIE</span>
           </Link>
 
           <Link

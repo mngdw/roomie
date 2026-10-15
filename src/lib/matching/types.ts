@@ -84,6 +84,10 @@ export interface CandidateUser {
   schoolOrWorkplace?: string | null;
   cityCode?: string | null;
   districtCode?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  zalo?: string | null;
+  facebook?: string | null;
   isSmoker: boolean;
   createdAt: string;
   // Room info if has_room

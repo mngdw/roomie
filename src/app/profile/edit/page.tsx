@@ -26,6 +26,8 @@ export default async function EditProfilePage() {
     districtCode: user.districtCode || undefined,
     bio: user.bio || undefined,
     isSmoker: user.isSmoker,
+    phone: user.phone || undefined,
+    zalo: user.zalo || undefined,
     acceptedGenders: user.roommatePreferences?.acceptedGenders,
     ageMin: user.roommatePreferences?.ageMin ?? undefined,
     ageMax: user.roommatePreferences?.ageMax ?? undefined,

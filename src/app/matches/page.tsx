@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   Calendar,
   Compass,
+  PhoneCall,
+  Mail,
 } from "lucide-react";
 
 export default async function MatchesPage() {
@@ -164,10 +166,24 @@ export default async function MatchesPage() {
                 </div>
 
                 {m.partner.bio && (
-                  <p className="text-xs text-slate-600 italic line-clamp-2 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-xs text-slate-600 italic line-clamp-2 mb-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
                     "{m.partner.bio}"
                   </p>
                 )}
+
+                {/* Direct Contact Channels */}
+                <div className="mb-4 p-2.5 rounded-xl bg-blue-50/60 border border-blue-100 flex items-center justify-between text-xs text-slate-700 flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 truncate max-w-[200px]" title={m.partner.email || "Email"}>
+                    <Mail className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                    <span className="truncate text-[11px] font-medium">{m.partner.email || "Liên hệ qua chat"}</span>
+                  </div>
+                  {m.partner.phone && (
+                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11px]">
+                      <PhoneCall className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      <span>{m.partner.phone}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Action Buttons */}

@@ -15,6 +15,7 @@ import {
   Moon,
   Clock,
   Sparkle,
+  MessageCircle,
 } from "lucide-react";
 import { MatchScoreBadge } from "./MatchScoreBadge";
 import type { RecommendationResult } from "@/lib/matching/types";
@@ -29,6 +30,7 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
   const { candidate, compatibility, explanation } = item;
   const [isPending, startTransition] = useTransition();
   const [isRemoved, setIsRemoved] = useState(false);
+  const [isMatched, setIsMatched] = useState(false);
   const [actionType, setActionType] = useState<"like" | "pass" | null>(null);
 
   if (isRemoved) return null;
@@ -41,7 +43,9 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
         candidate.displayName,
         compatibility.finalScore
       );
-      if (!matched) {
+      if (matched) {
+        setIsMatched(true);
+      } else {
         setIsRemoved(true);
       }
     });
@@ -234,15 +238,25 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
           <span className="hidden sm:inline">Chi tiết</span>
         </Link>
 
-        {/* Like Button */}
-        <button
-          onClick={handleLike}
-          disabled={isPending}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50"
-        >
-          <Heart className="w-4 h-4 fill-white" />
-          <span>Thích</span>
-        </button>
+        {/* Like or Matched Button */}
+        {isMatched ? (
+          <Link
+            href="/matches"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-all"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>Đã ghép đôi · Nhắn tin</span>
+          </Link>
+        ) : (
+          <button
+            onClick={handleLike}
+            disabled={isPending}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50"
+          >
+            <Heart className="w-4 h-4 fill-white" />
+            <span>Thích</span>
+          </button>
+        )}
       </div>
     </div>
   );

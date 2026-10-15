@@ -122,6 +122,9 @@ export async function GET(request: Request) {
               housingStatus: partner.housingStatus,
               isVerified: partner.isVerified,
               avatarPath: partner.avatarPath,
+              email: partner.email,
+              phone: partner.phone,
+              zalo: partner.zalo,
             },
             compatibility: compatibility
               ? { finalScore: compatibility.finalScore }

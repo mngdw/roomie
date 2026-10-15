@@ -5,11 +5,19 @@ import { getCurrentUserId, setCurrentUserId, clearSession } from "@/lib/server/s
 import { withSessionDb, withAdminDb } from "@/lib/server/db";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire/catalog.generated";
 
+export interface ContactInfo {
+  email?: string | null;
+  phone?: string | null;
+  zalo?: string | null;
+  facebook?: string | null;
+}
+
 export interface LikeResponse {
   success: boolean;
   matched: boolean;
   matchId?: string;
   conversationId?: string;
+  contactInfo?: ContactInfo;
   error?: string;
 }
 
@@ -17,6 +25,156 @@ export interface PassResponse {
   success: boolean;
   passed: boolean;
   error?: string;
+}
+
+export interface RelationshipStatusResponse {
+  success: boolean;
+  hasLiked: boolean;
+  hasLikedViewer: boolean;
+  isMatched: boolean;
+  matchId?: string;
+  conversationId?: string;
+  contactInfo?: ContactInfo;
+  error?: string;
+}
+
+/**
+ * Server action to get match, like, and contact status between current user and a candidate.
+ */
+export async function getRelationshipStatusAction(
+  targetUserId: string
+): Promise<RelationshipStatusResponse> {
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    return {
+      success: false,
+      hasLiked: false,
+      hasLikedViewer: false,
+      isMatched: false,
+      error: "Chưa đăng nhập",
+    };
+  }
+
+  try {
+    return await withAdminDb(async (client) => {
+      // 1. Check likes in both directions
+      const likesRes = await client.query(
+        `select from_user, to_user from public.likes
+         where (from_user = $1 and to_user = $2) or (from_user = $2 and to_user = $1)`,
+        [currentUserId, targetUserId]
+      );
+
+      const hasLiked = likesRes.rows.some(
+        (r) => r.from_user === currentUserId && r.to_user === targetUserId
+      );
+      const hasLikedViewer = likesRes.rows.some(
+        (r) => r.from_user === targetUserId && r.to_user === currentUserId
+      );
+
+      // 2. Check matches
+      const matchRes = await client.query(
+        `select m.id as match_id, c.id as conversation_id
+         from public.matches m
+         left join public.conversations c on c.match_id = m.id
+         where ((m.user_a = $1 and m.user_b = $2) or (m.user_a = $2 and m.user_b = $1))
+           and m.status = 'active'
+         limit 1`,
+        [currentUserId, targetUserId]
+      );
+
+      let isMatched = matchRes.rows.length > 0;
+      let matchId = matchRes.rows[0]?.match_id;
+      let conversationId = matchRes.rows[0]?.conversation_id;
+
+      // Auto-heal: if both liked each other, guarantee match & conversation
+      if (!isMatched && hasLiked && hasLikedViewer) {
+        const [userLow, userHigh] =
+          currentUserId < targetUserId
+            ? [currentUserId, targetUserId]
+            : [targetUserId, currentUserId];
+
+        const newMatch = await client.query(
+          `insert into public.matches (user_a, user_b, status)
+           values ($1, $2, 'active')
+           on conflict (user_a, user_b) do update set status = 'active'
+           returning id`,
+          [userLow, userHigh]
+        );
+        matchId = newMatch.rows[0]?.id;
+        isMatched = true;
+
+        if (matchId) {
+          const newConv = await client.query(
+            `insert into public.conversations (match_id)
+             values ($1)
+             on conflict do nothing
+             returning id`,
+            [matchId]
+          );
+          conversationId = newConv.rows[0]?.id;
+        }
+      }
+
+      // If matched but conversation missing, create it
+      if (isMatched && matchId && !conversationId) {
+        const convRes = await client.query(
+          `insert into public.conversations (match_id)
+           values ($1)
+           on conflict do nothing
+           returning id`,
+          [matchId]
+        );
+        conversationId = convRes.rows[0]?.id;
+        if (!conversationId) {
+          const findConv = await client.query(
+            `select id from public.conversations where match_id = $1`,
+            [matchId]
+          );
+          conversationId = findConv.rows[0]?.id;
+        }
+      }
+
+      // Fetch contact info if matched
+      let contactInfo: ContactInfo | undefined;
+      if (isMatched) {
+        const cRes = await client.query(
+          `select p.phone, p.zalo, p.facebook, u.email
+           from public.profiles p
+           left join auth.users u on u.id = p.user_id
+           where p.user_id = $1`,
+          [targetUserId]
+        );
+        if (cRes.rows[0]) {
+          const r = cRes.rows[0];
+          contactInfo = {
+            email: r.email || null,
+            phone: r.phone || null,
+            zalo: r.zalo || null,
+            facebook: r.facebook || null,
+          };
+        }
+      }
+
+      return {
+        success: true,
+        hasLiked,
+        hasLikedViewer,
+        isMatched,
+        matchId,
+        conversationId,
+        contactInfo,
+      };
+    });
+  } catch (err) {
+    console.error("getRelationshipStatusAction error:", err);
+    return {
+      success: false,
+      hasLiked: false,
+      hasLikedViewer: false,
+      isMatched: false,
+      error: (err as Error).message,
+    };
+  }
 }
 
 /**
@@ -38,6 +196,40 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
       return res.rows[0]?.data;
     });
 
+    const isMatched = !!result?.matched;
+    let convId = result?.conversation_id;
+    let contactInfo: ContactInfo | undefined;
+
+    if (isMatched) {
+      // Load contact info & ensure conversationId
+      await withAdminDb(async (adminClient) => {
+        if (!convId && result?.match_id) {
+          const cRes = await adminClient.query(
+            `select id from public.conversations where match_id = $1`,
+            [result.match_id]
+          );
+          convId = cRes.rows[0]?.id;
+        }
+
+        const infoRes = await adminClient.query(
+          `select p.phone, p.zalo, p.facebook, u.email
+           from public.profiles p
+           left join auth.users u on u.id = p.user_id
+           where p.user_id = $1`,
+          [targetUserId]
+        );
+        if (infoRes.rows[0]) {
+          const r = infoRes.rows[0];
+          contactInfo = {
+            email: r.email || null,
+            phone: r.phone || null,
+            zalo: r.zalo || null,
+            facebook: r.facebook || null,
+          };
+        }
+      });
+    }
+
     revalidatePath("/discovery");
     revalidatePath("/matches");
     revalidatePath(`/profile/${targetUserId}`);
@@ -45,9 +237,10 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
 
     return {
       success: true,
-      matched: !!result?.matched,
+      matched: isMatched,
       matchId: result?.match_id,
-      conversationId: result?.conversation_id,
+      conversationId: convId,
+      contactInfo,
     };
   } catch (err) {
     console.error("likeUserAction error:", err);
@@ -399,6 +592,9 @@ export interface UpdateProfilePayload {
   districtCode: string;
   bio: string;
   isSmoker: boolean;
+  phone?: string;
+  zalo?: string;
+  facebook?: string;
   acceptedGenders?: Array<"male" | "female" | "other">;
   ageMin?: number;
   ageMax?: number;
@@ -432,8 +628,11 @@ export async function updateProfileAction(
             district_code = $5,
             bio = $6,
             is_smoker = $7,
+            phone = coalesce($8, phone),
+            zalo = coalesce($9, zalo),
+            facebook = coalesce($10, facebook),
             updated_at = now()
-        where user_id = $8
+        where user_id = $11
       `,
         [
           data.displayName,
@@ -443,6 +642,9 @@ export async function updateProfileAction(
           normalizedDistrict,
           data.bio,
           data.isSmoker,
+          data.phone !== undefined ? (data.phone.trim() || null) : null,
+          data.zalo !== undefined ? (data.zalo.trim() || null) : null,
+          data.facebook !== undefined ? (data.facebook.trim() || null) : null,
           currentUserId,
         ]
       );
@@ -513,6 +715,13 @@ export async function sendMessageAction(
       `,
         [conversationId, currentUserId, trimmed]
       );
+
+      // Keep conversation timestamp updated
+      await client.query(
+        `update public.conversations set last_message_at = now(), updated_at = now() where id = $1`,
+        [conversationId]
+      );
+
       return res.rows[0];
     });
 

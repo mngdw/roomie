@@ -234,9 +234,12 @@ export async function fetchCandidateUser(
   userId: string
 ): Promise<CandidateUser | null> {
   if (isPgClient(client)) {
-    // 1. Profile
+    // 1. Profile & Account Contact Info
     const pRes = await client.query(
-      "select * from public.profiles where user_id = $1",
+      `select p.*, u.email
+       from public.profiles p
+       left join auth.users u on u.id = p.user_id
+       where p.user_id = $1`,
       [userId]
     );
     const profile = pRes.rows[0];
@@ -334,6 +337,10 @@ export async function fetchCandidateUser(
       schoolOrWorkplace: profile.school_or_workplace,
       cityCode: profile.city_code,
       districtCode: profile.district_code,
+      email: profile.email || null,
+      phone: profile.phone || null,
+      zalo: profile.zalo || null,
+      facebook: profile.facebook || null,
       isSmoker: profile.is_smoker,
       createdAt: profile.created_at,
       room,
@@ -469,6 +476,10 @@ export async function fetchCandidateUser(
     schoolOrWorkplace: profile.school_or_workplace,
     cityCode: profile.city_code,
     districtCode: profile.district_code,
+    email: (profile as any).email || null,
+    phone: (profile as any).phone || null,
+    zalo: (profile as any).zalo || null,
+    facebook: (profile as any).facebook || null,
     isSmoker: profile.is_smoker,
     createdAt: profile.created_at,
     room,
