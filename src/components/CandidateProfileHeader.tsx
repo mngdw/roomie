@@ -19,15 +19,18 @@ import {
   Copy,
   Check,
   ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import { MatchScoreBadge } from "./MatchScoreBadge";
 import { MutualMatchModal } from "./MutualMatchModal";
 import {
   likeUserAction,
   passUserAction,
+  unlikeUserAction,
   getRelationshipStatusAction,
   type ContactInfo,
 } from "@/app/actions";
+import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import type { CandidateUser, PairScoreResult } from "@/lib/matching/types";
 
 interface CandidateProfileHeaderProps {
@@ -89,16 +92,9 @@ export function CandidateProfileHeader({
     }
   }, [candidate.userId, currentUser?.id, initialRelationship]);
 
-  const districtName =
-    candidate.districtCode === "thanh_xuan"
-      ? "Thanh Xuân"
-      : candidate.districtCode === "cau_giay"
-      ? "Cầu Giấy"
-      : candidate.districtCode === "dong_da"
-      ? "Đống Đa"
-      : candidate.districtCode === "hai_ba_trung"
-      ? "Hai Bà Trưng"
-      : candidate.districtCode || "Hà Nội";
+  const districtName = getHanoiAreaLabel(candidate.districtCode, {
+    includeCluster: true,
+  });
 
   const handleLike = () => {
     startTransition(async () => {
@@ -109,6 +105,15 @@ export function CandidateProfileHeader({
         if (res.conversationId) setConversationId(res.conversationId);
         if (res.contactInfo) setContactInfo(res.contactInfo);
         setMatchModalOpen(true);
+      }
+    });
+  };
+
+  const handleUnlike = () => {
+    startTransition(async () => {
+      const res = await unlikeUserAction(candidate.userId);
+      if (res.success) {
+        setHasLiked(false);
       }
     });
   };
@@ -252,10 +257,24 @@ export function CandidateProfileHeader({
                   </button>
 
                   {hasLiked ? (
-                    <span className="inline-flex items-center gap-1.5 py-2.5 px-4 rounded-2xl font-semibold text-xs bg-slate-100 text-slate-600 border border-slate-200 cursor-default">
-                      <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />
-                      <span>Đã gửi thích</span>
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href="/matches?tab=history"
+                        className="inline-flex items-center gap-1.5 py-2.5 px-3.5 rounded-2xl font-bold text-xs bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100 transition-colors"
+                        title="Xem trong Lịch sử đã thích"
+                      >
+                        <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />
+                        <span>Đã gửi thích</span>
+                      </Link>
+                      <button
+                        onClick={handleUnlike}
+                        disabled={isPending}
+                        className="p-2.5 rounded-2xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 transition-colors shadow-sm"
+                        title="Hủy lượt thích"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={handleLike}

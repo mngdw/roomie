@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import Link from "next/link";
 import {
   Building,
@@ -50,16 +51,9 @@ export default async function RoomPage() {
     );
   }
 
-  const districtName =
-    room.districtCode === "thanh_xuan"
-      ? "Thanh Xuân"
-      : room.districtCode === "cau_giay"
-      ? "Cầu Giấy"
-      : room.districtCode === "dong_da"
-      ? "Đống Đa"
-      : room.districtCode === "hai_ba_trung"
-      ? "Hai Bà Trưng"
-      : room.districtCode || "Hà Nội";
+  const districtName = getHanoiAreaLabel(room.districtCode, {
+    includeCluster: true,
+  });
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
@@ -93,8 +87,8 @@ export default async function RoomPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100 mb-6">
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <MapPin className="w-4 h-4 text-slate-400" />
-              <span>Quận {districtName}, Hà Nội</span>
+              <MapPin className="w-4 h-4 text-blue-500" />
+              <span>{districtName}, Hà Nội</span>
             </div>
             <h2 className="text-xl font-bold text-slate-900">
               {room.roomType === "private"

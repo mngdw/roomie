@@ -23,16 +23,47 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     topRecommendations: [],
     allCandidates: [],
   };
+  let initialLikedRecords: Array<{ userId: string; likedAt: string }> = [];
+  let initialMatchedUserIds: string[] = [];
 
   try {
-    feed = await withAdminDb(async (client) => {
-      // 1. If user is logged in, calculate personalized feed
+    const result = await withAdminDb(async (client) => {
       if (currentUserId) {
-        return await getDiscoveryFeed(client, currentUserId);
+        const [f, likesRes, matchesRes] = await Promise.all([
+          getDiscoveryFeed(client, currentUserId),
+          client.query(
+            `select to_user, created_at from public.likes where from_user = $1 order by created_at desc`,
+            [currentUserId]
+          ),
+          client.query(
+            `select case when user_a = $1 then user_b else user_a end as partner_id
+             from public.matches
+             where (user_a = $1 or user_b = $1) and status = 'active'`,
+            [currentUserId]
+          ),
+        ]);
+
+        return {
+          feed: f,
+          likedRecords: likesRes.rows.map((r: any) => ({
+            userId: r.to_user,
+            likedAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+          })),
+          matchedIds: matchesRes.rows.map((r: any) => r.partner_id),
+        };
       }
-      // 2. Fallback to reference demo pool so guests always see rich candidate profiles
-      return await getDiscoveryFeed(client, DEFAULT_USER_ID);
+
+      const guestFeed = await getDiscoveryFeed(client, DEFAULT_USER_ID);
+      return {
+        feed: guestFeed,
+        likedRecords: [],
+        matchedIds: [],
+      };
     });
+
+    feed = result.feed;
+    initialLikedRecords = result.likedRecords;
+    initialMatchedUserIds = result.matchedIds;
   } catch (err) {
     console.error("Error fetching discovery feed in DiscoveryPage:", err);
   }
@@ -93,9 +124,17 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
       <DiscoveryView
         initialTopRecommendations={feed.topRecommendations}
         initialAllCandidates={feed.allCandidates}
+        initialLikedRecords={initialLikedRecords}
+        initialMatchedUserIds={initialMatchedUserIds}
         currentUser={currentUser}
         isNewlyCompleted={isNewlyCompleted}
-        initialTab={tab === "explore" ? "all_explore" : "top_picks"}
+        initialTab={
+          tab === "explore"
+            ? "all_explore"
+            : tab === "liked"
+            ? "liked_history"
+            : "top_picks"
+        }
       />
     </div>
   );

@@ -271,6 +271,7 @@ export async function passUserAction(targetUserId: string): Promise<PassResponse
     });
 
     revalidatePath("/discovery");
+    revalidatePath("/matches");
     return {
       success: true,
       passed: !!result?.passed,
@@ -280,6 +281,40 @@ export async function passUserAction(targetUserId: string): Promise<PassResponse
     return {
       success: false,
       passed: false,
+      error: (err as Error).message,
+    };
+  }
+}
+
+/**
+ * Server action to cancel/remove a sent like (Bỏ thích).
+ */
+export async function unlikeUserAction(
+  targetUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    return { success: false, error: "Chưa đăng nhập" };
+  }
+
+  try {
+    await withAdminDb(async (client) => {
+      await client.query(
+        `delete from public.likes where from_user = $1 and to_user = $2`,
+        [currentUserId, targetUserId]
+      );
+    });
+
+    revalidatePath("/discovery");
+    revalidatePath("/matches");
+    revalidatePath(`/profile/${targetUserId}`);
+    revalidatePath(`/compatibility/${targetUserId}`);
+
+    return { success: true };
+  } catch (err) {
+    console.error("unlikeUserAction error:", err);
+    return {
+      success: false,
       error: (err as Error).message,
     };
   }
@@ -352,11 +387,10 @@ export interface OnboardingPayload {
   }>;
 }
 
+import { normalizeHanoiAreaCode } from "@/lib/constants/hanoi-areas";
+
 function normalizeDistrict(d?: string | null): string {
-  if (!d) return "hn-cau-giay";
-  const trimmed = d.trim().toLowerCase();
-  if (trimmed.startsWith("hn-")) return trimmed;
-  return `hn-${trimmed.replace(/_/g, "-")}`;
+  return normalizeHanoiAreaCode(d);
 }
 
 const ALLOWED_REQUIREMENT_TAGS = new Set([

@@ -113,7 +113,7 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
     { href: "/discovery", label: "Khám phá", icon: Compass },
     ...(currentUser
       ? [
-          { href: "/matches", label: "Tin nhắn & Ghép đôi", icon: MessageCircle, badge: matchCount },
+          { href: "/matches", label: "Ghép đôi & Đã thích", icon: Heart, badge: matchCount },
           { href: "/questionnaire", label: "Bản khảo sát", icon: ClipboardList },
           { href: "/profile", label: "Hồ sơ của tôi", icon: User },
           ...(currentUser.housingStatus === "has_room"
@@ -358,6 +358,15 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
                     </div>
 
                     <div className="border-t border-slate-100 mt-1.5 pt-1.5 px-2 space-y-0.5">
+                      <Link
+                        href="/matches?tab=history"
+                        onClick={() => setDropdownOpen(false)}
+                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium text-pink-700 hover:bg-pink-50 transition-colors"
+                      >
+                        <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
+                        <span>Lịch sử đã thích</span>
+                      </Link>
+
                       <Link
                         href="/profile/edit"
                         onClick={() => setDropdownOpen(false)}

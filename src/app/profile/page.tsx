@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import Link from "next/link";
 import {
   User,
@@ -18,6 +19,7 @@ import {
   Volume2,
   Users,
   Coffee,
+  Heart,
 } from "lucide-react";
 
 export default async function MyProfilePage() {
@@ -47,18 +49,9 @@ export default async function MyProfilePage() {
   const q18Ans = user.answers.get(18)?.optionValues[0];
   const q10Ans = user.answers.get(10)?.optionValues[0];
 
-  const districtName =
-    user.districtCode === "thanh_xuan"
-      ? "Thanh Xuân"
-      : user.districtCode === "cau_giay"
-      ? "Cầu Giấy"
-      : user.districtCode === "dong_da"
-      ? "Đống Đa"
-      : user.districtCode === "hai_ba_trung"
-      ? "Hai Bà Trưng"
-      : user.districtCode === "ba_dinh"
-      ? "Ba Đình"
-      : user.districtCode || "Hà Nội";
+  const districtName = getHanoiAreaLabel(user.districtCode, {
+    includeCluster: true,
+  });
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
@@ -104,8 +97,8 @@ export default async function MyProfilePage() {
                     <span>{user.schoolOrWorkplace}</span>
                   </span>
                 )}
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-4 h-4 text-slate-400" />
+                <span className="flex items-center gap-1 font-medium text-slate-600">
+                  <MapPin className="w-4 h-4 text-blue-500" />
                   <span>{districtName}</span>
                 </span>
                 <span
@@ -121,7 +114,15 @@ export default async function MyProfilePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <Link
+              href="/matches?tab=history"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-pink-200 bg-pink-50 hover:bg-pink-100 text-pink-700 text-xs font-semibold shadow-sm transition-colors"
+            >
+              <Heart className="w-4 h-4 fill-pink-500 text-pink-500" />
+              <span>Lịch sử đã thích</span>
+            </Link>
+
             <Link
               href="/questionnaire"
               className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-sm transition-colors"
@@ -206,11 +207,11 @@ export default async function MyProfilePage() {
                   {Math.round(user.roomPreferences.budgetMax / 100000) / 10} triệu/tháng
                 </span>
               </div>
-              <div className="flex justify-between py-1.5 border-b border-slate-100">
-                <span className="text-slate-400">Quận tìm kiếm:</span>
-                <span className="font-semibold text-slate-800 capitalize">
+              <div className="flex justify-between py-1.5 border-b border-slate-100 gap-4">
+                <span className="text-slate-400 flex-shrink-0">Địa bàn tìm kiếm:</span>
+                <span className="font-semibold text-slate-800 text-right">
                   {user.roomPreferences.preferredDistrictCodes
-                    .map((d) => d.replace("_", " "))
+                    .map((d) => getHanoiAreaLabel(d))
                     .join(", ") || "Hà Nội"}
                 </span>
               </div>

@@ -6,6 +6,7 @@ import { scorePair } from "@/lib/matching/scoring";
 import { CandidateProfileHeader } from "@/components/CandidateProfileHeader";
 import { CandidateNoteCard } from "@/components/CandidateNoteCard";
 import { getCandidateNoteAction, getRelationshipStatusAction } from "@/app/actions";
+import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import {
   Heart,
   Clock,
@@ -138,9 +139,11 @@ export default async function CandidateProfilePage({
                   </div>
 
                   <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
-                    <div className="text-xs text-slate-500 mb-1">Khu vực</div>
-                    <div className="text-sm font-bold text-slate-800 capitalize">
-                      {candidate.room.districtCode.replace("_", " ")}
+                    <div className="text-xs text-slate-500 mb-1">Địa bàn</div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {getHanoiAreaLabel(candidate.room.districtCode, {
+                        includeCluster: true,
+                      })}
                     </div>
                   </div>
 
@@ -195,10 +198,10 @@ export default async function CandidateProfilePage({
                   </div>
 
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                    <div className="text-xs text-slate-500 mb-1">Quận mong muốn</div>
+                    <div className="text-xs text-slate-500 mb-1">Địa bàn mong muốn</div>
                     <div className="text-sm font-bold text-slate-800">
                       {candidate.roomPreferences.preferredDistrictCodes
-                        .map((d) => d.replace("_", " "))
+                        .map((d) => getHanoiAreaLabel(d))
                         .join(", ") || "Hà Nội"}
                     </div>
                   </div>

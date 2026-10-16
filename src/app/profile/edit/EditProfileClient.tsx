@@ -13,6 +13,10 @@ import {
   Heart,
 } from "lucide-react";
 import { updateProfileAction, type UpdateProfilePayload } from "@/app/actions";
+import {
+  HANOI_AREA_CLUSTERS,
+  normalizeHanoiAreaCode,
+} from "@/lib/constants/hanoi-areas";
 
 interface EditProfileClientProps {
   initialData: {
@@ -47,7 +51,7 @@ export function EditProfileClient({ initialData }: EditProfileClientProps) {
     initialData.schoolOrWorkplace || ""
   );
   const [districtCode, setDistrictCode] = useState(
-    initialData.districtCode || "thanh_xuan"
+    normalizeHanoiAreaCode(initialData.districtCode || "hn-thanh-xuan")
   );
   const [bio, setBio] = useState(initialData.bio || "");
   const [isSmoker, setIsSmoker] = useState(initialData.isSmoker || false);
@@ -212,18 +216,25 @@ export function EditProfileClient({ initialData }: EditProfileClientProps) {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Khu vực (Hà Nội) *
+                  Địa bàn Hà Nội (Xã/Phường mới) *
                 </label>
                 <select
                   value={districtCode}
                   onChange={(e) => setDistrictCode(e.target.value)}
                   className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="thanh_xuan">Thanh Xuân</option>
-                  <option value="cau_giay">Cầu Giấy</option>
-                  <option value="dong_da">Đống Đa</option>
-                  <option value="hai_ba_trung">Hai Bà Trưng</option>
-                  <option value="ba_dinh">Ba Đình</option>
+                  {HANOI_AREA_CLUSTERS.map((cluster) => (
+                    <optgroup
+                      key={cluster.code}
+                      label={`── ${cluster.label} (${cluster.units.length} ĐVHC mới) ──`}
+                    >
+                      {cluster.units.map((u) => (
+                        <option key={u.code} value={u.code}>
+                          {u.nameVi}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
             </div>

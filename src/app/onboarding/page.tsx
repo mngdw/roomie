@@ -41,6 +41,7 @@ export default async function OnboardingPage() {
         roomType: user.room?.roomType,
         facilities: user.room?.facilities,
         budgetMax: user.roomPreferences?.budgetMax,
+        preferredDistrictCodes: user.roomPreferences?.preferredDistrictCodes,
         existingAnswers,
       }
     : undefined;

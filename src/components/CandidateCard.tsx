@@ -6,77 +6,82 @@ import {
   CheckCircle2,
   MapPin,
   GraduationCap,
-  Building,
   Heart,
   X,
   Eye,
   Sparkles,
   Home,
-  Moon,
-  Clock,
-  Sparkle,
   MessageCircle,
+  Check,
+  RotateCcw,
 } from "lucide-react";
 import { MatchScoreBadge } from "./MatchScoreBadge";
+import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import type { RecommendationResult } from "@/lib/matching/types";
 
 interface CandidateCardProps {
   item: RecommendationResult;
   onLike: (targetUserId: string, targetName: string, score: number) => Promise<boolean>;
   onPass: (targetUserId: string) => Promise<void>;
+  onUnlike?: (targetUserId: string) => Promise<void>;
+  initialLiked?: boolean;
+  initialMatched?: boolean;
+  likedAt?: string | null;
 }
 
-export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
+export function CandidateCard({
+  item,
+  onLike,
+  onPass,
+  onUnlike,
+  initialLiked = false,
+  initialMatched = false,
+  likedAt = null,
+}: CandidateCardProps) {
   const { candidate, compatibility, explanation } = item;
   const [isPending, startTransition] = useTransition();
   const [isRemoved, setIsRemoved] = useState(false);
-  const [isMatched, setIsMatched] = useState(false);
-  const [actionType, setActionType] = useState<"like" | "pass" | null>(null);
+  const [isLiked, setIsLiked] = useState(initialLiked);
+  const [isMatched, setIsMatched] = useState(initialMatched);
+
+  // Sync with parent props if updated
+  React.useEffect(() => {
+    setIsLiked(initialLiked);
+  }, [initialLiked]);
+
+  React.useEffect(() => {
+    setIsMatched(initialMatched);
+  }, [initialMatched]);
 
   if (isRemoved) return null;
 
   const handleLike = () => {
-    setActionType("like");
     startTransition(async () => {
       const matched = await onLike(
         candidate.userId,
         candidate.displayName,
         compatibility.finalScore
       );
+      setIsLiked(true);
       if (matched) {
         setIsMatched(true);
-      } else {
-        setIsRemoved(true);
       }
     });
   };
 
+  const handleUnlike = () => {
+    if (!onUnlike) return;
+    startTransition(async () => {
+      await onUnlike(candidate.userId);
+      setIsLiked(false);
+    });
+  };
+
   const handlePass = () => {
-    setActionType("pass");
     startTransition(async () => {
       await onPass(candidate.userId);
       setIsRemoved(true);
     });
-  };
-
-  // District name mapping
-  const DISTRICT_NAMES_MAP: Record<string, string> = {
-    "hn-thanh-xuan": "Thanh Xuân",
-    "thanh_xuan": "Thanh Xuân",
-    "hn-cau-giay": "Cầu Giấy",
-    "cau_giay": "Cầu Giấy",
-    "hn-dong-da": "Đống Đa",
-    "dong_da": "Đống Đa",
-    "hn-hai-ba-trung": "Hai Bà Trưng",
-    "hai_ba_trung": "Hai Bà Trưng",
-    "hn-ba-dinh": "Ba Đình",
-    "ba_dinh": "Ba Đình",
-    "hn-hoang-mai": "Hoàng Mai",
-    "hn-nam-tu-liem": "Nam Từ Liêm",
-    "hn-bac-tu-liem": "Bắc Từ Liêm",
-    "hn-ha-dong": "Hà Đông",
-    "hn-tay-ho": "Tây Hồ",
-    "hn-long-bien": "Long Biên",
   };
 
   const rawDistrict =
@@ -84,8 +89,7 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
       ? candidate.room.districtCode
       : candidate.districtCode;
 
-  const districtName =
-    (rawDistrict && DISTRICT_NAMES_MAP[rawDistrict]) || rawDistrict || "Hà Nội";
+  const districtName = getHanoiAreaLabel(rawDistrict, { includeCluster: true });
 
   // Calculate rent display
   let rentDisplay = "";
@@ -98,7 +102,44 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
   }
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col">
+    <div
+      className={`bg-white rounded-3xl border transition-all duration-200 overflow-hidden flex flex-col ${
+        isMatched
+          ? "border-emerald-300 shadow-sm ring-1 ring-emerald-500/15"
+          : isLiked
+          ? "border-pink-200 shadow-sm ring-1 ring-pink-500/10"
+          : "border-slate-200/90 shadow-sm hover:shadow-md"
+      }`}
+    >
+      {/* Status Banner if Liked or Matched */}
+      {(isLiked || isMatched) && (
+        <div
+          className={`px-5 py-1.5 text-[11px] font-bold flex items-center justify-between ${
+            isMatched
+              ? "bg-emerald-50 text-emerald-700 border-b border-emerald-100"
+              : "bg-pink-50/80 text-pink-700 border-b border-pink-100"
+          }`}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Heart
+              className={`w-3 h-3 ${
+                isMatched
+                  ? "fill-emerald-600 text-emerald-600"
+                  : "fill-pink-500 text-pink-500"
+              }`}
+            />
+            <span>
+              {isMatched ? "Đã ghép đôi hai chiều" : "Bạn đã nhấn Thích hồ sơ này"}
+            </span>
+          </span>
+          {likedAt && !isMatched && (
+            <span className="text-[10px] font-medium text-pink-600/80">
+              {new Date(likedAt).toLocaleDateString("vi-VN")}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Top Banner / Card Head */}
       <div className="p-5 sm:p-6 pb-4">
         <div className="flex items-start justify-between gap-3">
@@ -142,8 +183,8 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
                     <span>{candidate.schoolOrWorkplace}</span>
                   </span>
                 )}
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                <span className="flex items-center gap-1 text-slate-600 font-medium">
+                  <MapPin className="w-3.5 h-3.5 text-blue-500" />
                   <span>{districtName}</span>
                 </span>
               </div>
@@ -218,27 +259,39 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
 
       {/* Card Action Footer */}
       <div className="mt-auto px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
-        {/* Pass Button */}
-        <button
-          onClick={handlePass}
-          disabled={isPending}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-sm transition-all hover:border-slate-300 disabled:opacity-50"
-        >
-          <X className="w-4 h-4 text-slate-400" />
-          <span>Bỏ qua</span>
-        </button>
+        {/* Pass or Unlike Button */}
+        {isLiked && !isMatched && onUnlike ? (
+          <button
+            onClick={handleUnlike}
+            disabled={isPending}
+            className="inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+            title="Hủy lượt thích này"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Bỏ thích</span>
+          </button>
+        ) : !isMatched ? (
+          <button
+            onClick={handlePass}
+            disabled={isPending}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-sm transition-all hover:border-slate-300 disabled:opacity-50"
+          >
+            <X className="w-4 h-4 text-slate-400" />
+            <span>Bỏ qua</span>
+          </button>
+        ) : null}
 
         {/* View Profile Button */}
         <Link
           href={`/profile/${candidate.userId}`}
-          className="inline-flex items-center justify-center gap-1 p-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
+          className="inline-flex items-center justify-center gap-1 p-2.5 px-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
           title="Xem hồ sơ chi tiết"
         >
           <Eye className="w-4 h-4" />
-          <span className="hidden sm:inline">Chi tiết</span>
+          <span>Chi tiết</span>
         </Link>
 
-        {/* Like or Matched Button */}
+        {/* Like, Liked, or Matched Button */}
         {isMatched ? (
           <Link
             href="/matches"
@@ -246,6 +299,15 @@ export function CandidateCard({ item, onLike, onPass }: CandidateCardProps) {
           >
             <MessageCircle className="w-4 h-4" />
             <span>Đã ghép đôi · Nhắn tin</span>
+          </Link>
+        ) : isLiked ? (
+          <Link
+            href="/matches?tab=history"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-xs font-bold transition-all"
+            title="Xem trong Lịch sử đã thích"
+          >
+            <Heart className="w-4 h-4 fill-pink-500 text-pink-500" />
+            <span>Đã thích ✓</span>
           </Link>
         ) : (
           <button

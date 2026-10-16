@@ -24,6 +24,11 @@ import {
   QUESTIONNAIRE_CATEGORIES,
 } from "@/lib/questionnaire/catalog.generated";
 import { saveOnboardingAction, type OnboardingPayload } from "@/app/actions";
+import {
+  HANOI_AREA_CLUSTERS,
+  getHanoiAreaLabel,
+  normalizeHanoiAreaCode,
+} from "@/lib/constants/hanoi-areas";
 
 interface OnboardingWizardProps {
   initialData?: {
@@ -47,6 +52,7 @@ interface OnboardingWizardProps {
     roomType?: string;
     facilities?: string[];
     budgetMax?: number;
+    preferredDistrictCodes?: string[];
     roomImages?: string[];
     existingAnswers?: Array<{
       questionNumber: number;
@@ -55,19 +61,6 @@ interface OnboardingWizardProps {
     }>;
   };
 }
-
-const DISTRICT_LABELS: Record<string, string> = {
-  "hn-thanh-xuan": "Thanh Xuân",
-  "hn-cau-giay": "Cầu Giấy",
-  "hn-dong-da": "Đống Đa",
-  "hn-hai-ba-trung": "Hai Bà Trưng",
-  "hn-ba-dinh": "Ba Đình",
-  "hn-hoang-mai": "Hoàng Mai",
-  "hn-nam-tu-liem": "Nam Từ Liêm",
-  "hn-bac-tu-liem": "Bắc Từ Liêm",
-  "hn-ha-dong": "Hà Đông",
-  "hn-tay-ho": "Tây Hồ",
-};
 
 export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
   const router = useRouter();
@@ -92,8 +85,9 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
   );
   const [cityCode] = useState("hn");
   const [districtCode, setDistrictCode] = useState(
-    initialData?.districtCode || "hn-thanh-xuan"
+    normalizeHanoiAreaCode(initialData?.districtCode || "hn-thanh-xuan")
   );
+  const [areaSearch, setAreaSearch] = useState("");
   const [bio, setBio] = useState(
     initialData?.bio ||
       "Mình là người hòa đồng, tôn trọng không gian riêng và luôn giữ gìn vệ sinh chung."
@@ -177,10 +171,12 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
 
   // Seeker preferences (if looking_for_room)
   const [budgetMax, setBudgetMax] = useState(initialData?.budgetMax || 2500000);
-  const [preferredDistricts, setPreferredDistricts] = useState<string[]>([
-    "hn-thanh-xuan",
-    "hn-cau-giay",
-  ]);
+  const [preferredDistricts, setPreferredDistricts] = useState<string[]>(
+    initialData?.preferredDistrictCodes &&
+      initialData.preferredDistrictCodes.length > 0
+      ? initialData.preferredDistrictCodes.map(normalizeHanoiAreaCode)
+      : ["hn-thanh-xuan", "hn-cau-giay"]
+  );
 
   // Step 5: 30 Questions Answers Map
   const [answersMap, setAnswersMap] = useState<
@@ -458,23 +454,25 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Khu vực sinh sống (Hà Nội) *
+                  Địa bàn sinh sống tại Hà Nội (Xã/Phường mới) *
                 </label>
                 <select
                   value={districtCode}
                   onChange={(e) => setDistrictCode(e.target.value)}
                   className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="hn-thanh-xuan">Thanh Xuân</option>
-                  <option value="hn-cau-giay">Cầu Giấy</option>
-                  <option value="hn-dong-da">Đống Đa</option>
-                  <option value="hn-hai-ba-trung">Hai Bà Trưng</option>
-                  <option value="hn-ba-dinh">Ba Đình</option>
-                  <option value="hn-hoang-mai">Hoàng Mai</option>
-                  <option value="hn-nam-tu-liem">Nam Từ Liêm</option>
-                  <option value="hn-bac-tu-liem">Bắc Từ Liêm</option>
-                  <option value="hn-ha-dong">Hà Đông</option>
-                  <option value="hn-tay-ho">Tây Hồ</option>
+                  {HANOI_AREA_CLUSTERS.map((cluster) => (
+                    <optgroup
+                      key={cluster.code}
+                      label={`── ${cluster.label} (${cluster.units.length} ĐVHC mới) ──`}
+                    >
+                      {cluster.units.map((u) => (
+                        <option key={u.code} value={u.code}>
+                          {u.nameVi}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
             </div>
@@ -990,48 +988,143 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-2">
-                    Các quận mong muốn tìm phòng
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { code: "hn-thanh-xuan", label: "Thanh Xuân" },
-                      { code: "hn-cau-giay", label: "Cầu Giấy" },
-                      { code: "hn-dong-da", label: "Đống Đa" },
-                      { code: "hn-hai-ba-trung", label: "Hai Bà Trưng" },
-                      { code: "hn-ba-dinh", label: "Ba Đình" },
-                      { code: "hn-hoang-mai", label: "Hoàng Mai" },
-                      { code: "hn-nam-tu-liem", label: "Nam Từ Liêm" },
-                      { code: "hn-bac-tu-liem", label: "Bắc Từ Liêm" },
-                      { code: "hn-ha-dong", label: "Hà Đông" },
-                      { code: "hn-tay-ho", label: "Tây Hồ" },
-                    ].map((d) => {
-                      const isSel = preferredDistricts.includes(d.code);
-                      return (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Các xã / phường Hà Nội mong muốn tìm phòng (Phân chia hành chính mới)
+                    </label>
+                    <span className="text-[11px] font-semibold text-blue-600">
+                      Đã chọn {preferredDistricts.length} địa bàn
+                    </span>
+                  </div>
+
+                  {/* Selected chips */}
+                  {preferredDistricts.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-3 p-3 rounded-2xl bg-blue-50/60 border border-blue-100">
+                      {preferredDistricts.map((code) => (
                         <button
-                          key={d.code}
+                          key={code}
                           type="button"
-                          onClick={() => {
-                            if (isSel) {
-                              setPreferredDistricts(
-                                preferredDistricts.filter((x) => x !== d.code)
-                              );
-                            } else {
-                              setPreferredDistricts([
-                                ...preferredDistricts,
-                                d.code,
-                              ]);
-                            }
-                          }}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                            isSel
-                              ? "bg-blue-50 border-blue-600 text-blue-700"
-                              : "bg-slate-50 border-slate-200 text-slate-600"
-                          }`}
+                          onClick={() =>
+                            setPreferredDistricts(
+                              preferredDistricts.filter((x) => x !== code)
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-semibold shadow-sm hover:bg-blue-700 transition-colors"
                         >
-                          {isSel ? "✓ " : ""}
-                          {d.label}
+                          <span>{getHanoiAreaLabel(code)}</span>
+                          <span className="text-blue-200 ml-0.5">×</span>
                         </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quick search input */}
+                  <input
+                    type="text"
+                    value={areaSearch}
+                    onChange={(e) => setAreaSearch(e.target.value)}
+                    placeholder="Tìm nhanh theo tên Phường/Xã hoặc Khu vực (VD: Cầu Giấy, Yên Hòa, Thanh Xuân, Hòa Lạc...)"
+                    className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-3 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  {/* Grouped 126 units */}
+                  <div className="max-h-72 overflow-y-auto pr-1 space-y-3 border border-slate-200 rounded-2xl p-3 bg-slate-50/50">
+                    {HANOI_AREA_CLUSTERS.filter((cluster) => {
+                      if (!areaSearch.trim()) return true;
+                      const q = areaSearch.toLowerCase().trim();
+                      if (cluster.label.toLowerCase().includes(q)) return true;
+                      return cluster.units.some((u) =>
+                        u.nameVi.toLowerCase().includes(q)
+                      );
+                    }).map((cluster) => {
+                      const q = areaSearch.toLowerCase().trim();
+                      const visibleUnits =
+                        !q || cluster.label.toLowerCase().includes(q)
+                          ? cluster.units
+                          : cluster.units.filter((u) =>
+                              u.nameVi.toLowerCase().includes(q)
+                            );
+                      const allClusterSelected = cluster.units.every((u) =>
+                        preferredDistricts.includes(u.code)
+                      );
+
+                      return (
+                        <div
+                          key={cluster.code}
+                          className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-xs"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-800">
+                              {cluster.label}{" "}
+                              <span className="text-[11px] font-normal text-slate-400">
+                                ({cluster.units.length} xã/phường mới)
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const clusterCodes = cluster.units.map(
+                                  (u) => u.code
+                                );
+                                if (allClusterSelected) {
+                                  setPreferredDistricts(
+                                    preferredDistricts.filter(
+                                      (x) => !clusterCodes.includes(x)
+                                    )
+                                  );
+                                } else {
+                                  setPreferredDistricts(
+                                    Array.from(
+                                      new Set([
+                                        ...preferredDistricts,
+                                        ...clusterCodes,
+                                      ])
+                                    )
+                                  );
+                                }
+                              }}
+                              className="text-[11px] font-semibold text-blue-600 hover:underline"
+                            >
+                              {allClusterSelected
+                                ? "Bỏ chọn cụm này"
+                                : "+ Chọn cả cụm"}
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
+                            {visibleUnits.map((u) => {
+                              const isSel = preferredDistricts.includes(u.code);
+                              return (
+                                <button
+                                  key={u.code}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isSel) {
+                                      setPreferredDistricts(
+                                        preferredDistricts.filter(
+                                          (x) => x !== u.code
+                                        )
+                                      );
+                                    } else {
+                                      setPreferredDistricts([
+                                        ...preferredDistricts,
+                                        u.code,
+                                      ]);
+                                    }
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                    isSel
+                                      ? "bg-blue-50 border-blue-600 text-blue-700"
+                                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  {isSel ? "✓ " : ""}
+                                  {u.nameVi}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -1195,7 +1288,8 @@ export function OnboardingWizard({ initialData }: OnboardingWizardProps) {
                 {displayName} ({fullName})
               </div>
               <div className="text-xs text-slate-500 mt-0.5">
-                {gender === "female" ? "Nữ" : "Nam"} • {occupation} • {DISTRICT_LABELS[districtCode] || districtCode}
+                {gender === "female" ? "Nữ" : "Nam"} • {occupation} •{" "}
+                {getHanoiAreaLabel(districtCode, { includeCluster: true })}
               </div>
             </div>
 

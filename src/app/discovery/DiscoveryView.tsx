@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Sparkles,
-  Users,
   Search,
   CheckCircle2,
   RefreshCw,
@@ -14,17 +14,23 @@ import {
   Star,
   Award,
   ChevronRight,
-  Check,
-  TrendingUp,
+  Heart,
+  History,
 } from "lucide-react";
 import { CandidateCard } from "@/components/CandidateCard";
 import { MutualMatchModal } from "@/components/MutualMatchModal";
-import { likeUserAction, passUserAction } from "@/app/actions";
+import { likeUserAction, passUserAction, unlikeUserAction } from "@/app/actions";
+import {
+  HANOI_AREA_CLUSTERS,
+  matchesHanoiAreaFilter,
+} from "@/lib/constants/hanoi-areas";
 import type { RecommendationResult } from "@/lib/matching/types";
 
 interface DiscoveryViewProps {
   initialTopRecommendations: RecommendationResult[];
   initialAllCandidates: RecommendationResult[];
+  initialLikedRecords?: Array<{ userId: string; likedAt: string }>;
+  initialMatchedUserIds?: string[];
   currentUser: {
     id: string;
     displayName: string;
@@ -33,43 +39,43 @@ interface DiscoveryViewProps {
     isCompleted: boolean;
   } | null;
   isNewlyCompleted?: boolean;
-  initialTab?: "top_picks" | "all_explore";
+  initialTab?: "top_picks" | "all_explore" | "liked_history";
 }
-
-const DISTRICT_OPTIONS = [
-  { code: "", label: "Tất cả quận" },
-  { code: "hn-thanh-xuan", label: "Thanh Xuân" },
-  { code: "hn-cau-giay", label: "Cầu Giấy" },
-  { code: "hn-dong-da", label: "Đống Đa" },
-  { code: "hn-hai-ba-trung", label: "Hai Bà Trưng" },
-  { code: "hn-ba-dinh", label: "Ba Đình" },
-  { code: "hn-hoang-mai", label: "Hoàng Mai" },
-  { code: "hn-nam-tu-liem", label: "Nam Từ Liêm" },
-  { code: "hn-bac-tu-liem", label: "Bắc Từ Liêm" },
-  { code: "hn-ha-dong", label: "Hà Đông" },
-  { code: "hn-tay-ho", label: "Tây Hồ" },
-  { code: "hn-long-bien", label: "Long Biên" },
-];
 
 export function DiscoveryView({
   initialTopRecommendations,
   initialAllCandidates,
+  initialLikedRecords = [],
+  initialMatchedUserIds = [],
   currentUser,
   isNewlyCompleted = false,
   initialTab = "top_picks",
 }: DiscoveryViewProps) {
-  const [activeTab, setActiveTab] = useState<"top_picks" | "all_explore">(
-    initialTab
-  );
+  const [activeTab, setActiveTab] = useState<
+    "top_picks" | "all_explore" | "liked_history"
+  >(initialTab);
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(isNewlyCompleted);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   // Candidates state
-  const [topCandidates, setTopCandidates] = useState<RecommendationResult[]>(
+  const [topCandidates] = useState<RecommendationResult[]>(
     initialTopRecommendations
   );
-  const [allCandidates, setAllCandidates] = useState<RecommendationResult[]>(
+  const [allCandidates] = useState<RecommendationResult[]>(
     initialAllCandidates
+  );
+
+  // Liked & Matched tracking state
+  const [likedMap, setLikedMap] = useState<Map<string, string>>(() => {
+    const m = new Map<string, string>();
+    for (const r of initialLikedRecords) {
+      m.set(r.userId, r.likedAt);
+    }
+    return m;
+  });
+
+  const [matchedSet, setMatchedSet] = useState<Set<string>>(
+    () => new Set(initialMatchedUserIds)
   );
 
   // Filters state (for Explore Further mode)
@@ -98,7 +104,19 @@ export function DiscoveryView({
     score: number
   ): Promise<boolean> => {
     const res = await likeUserAction(targetUserId);
+    if (res.success) {
+      setLikedMap((prev) => {
+        const next = new Map(prev);
+        next.set(targetUserId, new Date().toISOString());
+        return next;
+      });
+    }
     if (res.matched) {
+      setMatchedSet((prev) => {
+        const next = new Set(prev);
+        next.add(targetUserId);
+        return next;
+      });
       setMatchedUser({
         id: targetUserId,
         displayName: targetName,
@@ -112,6 +130,17 @@ export function DiscoveryView({
       return true;
     }
     return false;
+  };
+
+  const handleUnlike = async (targetUserId: string) => {
+    const res = await unlikeUserAction(targetUserId);
+    if (res.success) {
+      setLikedMap((prev) => {
+        const next = new Map(prev);
+        next.delete(targetUserId);
+        return next;
+      });
+    }
   };
 
   const handlePass = async (targetUserId: string) => {
@@ -135,11 +164,7 @@ export function DiscoveryView({
     if (filterDistrict) {
       const dCode =
         c.housingStatus === "has_room" ? c.room?.districtCode : c.districtCode;
-      if (
-        dCode !== filterDistrict &&
-        dCode !== filterDistrict.replace(/^hn-/, "") &&
-        `hn-${dCode}` !== filterDistrict
-      ) {
+      if (!matchesHanoiAreaFilter(dCode, filterDistrict)) {
         return false;
       }
     }
@@ -152,6 +177,15 @@ export function DiscoveryView({
     }
     return true;
   });
+
+  // Candidates that the current user has liked, sorted by most recently liked
+  const likedCandidates = allCandidates
+    .filter((item) => likedMap.has(item.candidate.userId))
+    .sort((a, b) => {
+      const tA = likedMap.get(a.candidate.userId) || "";
+      const tB = likedMap.get(b.candidate.userId) || "";
+      return tB.localeCompare(tA);
+    });
 
   const resetFilters = () => {
     setSearchQuery("");
@@ -229,20 +263,24 @@ export function DiscoveryView({
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {activeTab === "top_picks"
               ? "Người dùng đề xuất tương thích cao"
+              : activeTab === "liked_history"
+              ? "Lịch sử những người bạn đã thích"
               : "Khám phá tất cả bạn cùng phòng"}
           </h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
             {activeTab === "top_picks"
               ? "Danh sách các ứng viên đạt độ tương thích cao nhất được thuật toán tuyển chọn riêng cho bạn dựa trên 30 câu hỏi khảo sát."
-              : "Tìm kiếm mở rộng trong toàn bộ cộng đồng với bộ lọc chi tiết theo quận Hà Nội, ngân sách, giới tính và thói quen sinh hoạt."}
+              : activeTab === "liked_history"
+              ? "Theo dõi danh sách tất cả ứng viên bạn đã nhấn Thích, trạng thái phản hồi ghép đôi hoặc hoàn tác lượt thích."
+              : "Tìm kiếm mở rộng trong toàn bộ cộng đồng với bộ lọc chi tiết theo 126 xã/phường mới của Hà Nội, ngân sách, giới tính và thói quen sinh hoạt."}
           </p>
         </div>
 
         {/* Tab Switcher (Segmented Control) */}
-        <div className="flex items-center p-1.5 rounded-2xl bg-slate-100 border border-slate-200 self-start lg:self-auto shadow-inner">
+        <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-slate-100 border border-slate-200 self-start lg:self-auto shadow-inner gap-1">
           <button
             onClick={() => setActiveTab("top_picks")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === "top_picks"
                 ? "bg-white text-blue-700 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
@@ -255,7 +293,7 @@ export function DiscoveryView({
                   : "text-slate-400"
               }`}
             />
-            <span>Đề xuất tương thích cao</span>
+            <span>Đề xuất cao</span>
             <span
               className={`px-1.5 py-0.5 rounded-full text-[10px] ${
                 activeTab === "top_picks"
@@ -269,7 +307,7 @@ export function DiscoveryView({
 
           <button
             onClick={() => setActiveTab("all_explore")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === "all_explore"
                 ? "bg-white text-blue-700 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
@@ -291,6 +329,35 @@ export function DiscoveryView({
               {allCandidates.length}
             </span>
           </button>
+
+          {currentUser && (
+            <button
+              onClick={() => setActiveTab("liked_history")}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeTab === "liked_history"
+                  ? "bg-white text-pink-700 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Heart
+                className={`w-3.5 h-3.5 ${
+                  activeTab === "liked_history"
+                    ? "text-pink-600 fill-pink-500"
+                    : "text-pink-500"
+                }`}
+              />
+              <span>Lịch sử đã thích</span>
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  activeTab === "liked_history"
+                    ? "bg-pink-100 text-pink-700"
+                    : "bg-pink-100/80 text-pink-700"
+                }`}
+              >
+                {likedMap.size}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -323,31 +390,49 @@ export function DiscoveryView({
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
                   <Award className="w-4 h-4 text-amber-500" />
                   <span>
                     Hiển thị <strong>{topCandidates.length}</strong> ứng viên tương thích cao nhất
                   </span>
                 </div>
-                <button
-                  onClick={() => setActiveTab("all_explore")}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
-                >
-                  <span>Xem tất cả ứng viên</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-4">
+                  {currentUser && likedMap.size > 0 && (
+                    <button
+                      onClick={() => setActiveTab("liked_history")}
+                      className="text-xs font-bold text-pink-600 hover:text-pink-800 inline-flex items-center gap-1"
+                    >
+                      <Heart className="w-3.5 h-3.5 fill-pink-500 text-pink-500" />
+                      <span>Đã thích ({likedMap.size})</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActiveTab("all_explore")}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
+                  >
+                    <span>Xem tất cả ứng viên</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {topCandidates.map((item) => (
-                  <CandidateCard
-                    key={item.candidate.userId}
-                    item={item}
-                    onLike={handleLike}
-                    onPass={handlePass}
-                  />
-                ))}
+                {topCandidates.map((item) => {
+                  const uid = item.candidate.userId;
+                  return (
+                    <CandidateCard
+                      key={uid}
+                      item={item}
+                      onLike={handleLike}
+                      onPass={handlePass}
+                      onUnlike={handleUnlike}
+                      initialLiked={likedMap.has(uid)}
+                      initialMatched={matchedSet.has(uid)}
+                      likedAt={likedMap.get(uid) || null}
+                    />
+                  );
+                })}
               </div>
 
               {/* Transition Banner: "Nếu không có ai phù hợp -> Khám phá tiếp" */}
@@ -361,7 +446,7 @@ export function DiscoveryView({
                     Chưa thấy ai phù hợp với nhu cầu trong những người được đề cử?
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-                    Đừng ngần ngại! Bạn có thể tiếp tục <strong>khám phá toàn bộ danh sách bạn cùng phòng</strong> trong hệ thống với bộ lọc linh hoạt theo quận, ngân sách và thói quen sinh hoạt để chủ động tìm kiếm người ưng ý nhất.
+                    Đừng ngần ngại! Bạn có thể tiếp tục <strong>khám phá toàn bộ danh sách bạn cùng phòng</strong> trong hệ thống với bộ lọc linh hoạt theo 126 xã/phường Hà Nội mới, ngân sách và thói quen sinh hoạt để chủ động tìm kiếm người ưng ý nhất.
                   </p>
                 </div>
                 <button
@@ -403,7 +488,7 @@ export function DiscoveryView({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider">
                 <SlidersHorizontal className="w-4 h-4 text-blue-600" />
-                <span>Bộ lọc tìm kiếm chi tiết</span>
+                <span>Bộ lọc tìm kiếm chi tiết (Phân chia hành chính Hà Nội mới)</span>
               </div>
               {(searchQuery ||
                 filterGender ||
@@ -451,20 +536,38 @@ export function DiscoveryView({
                 </select>
               </div>
 
-              {/* District Filter */}
+              {/* District Filter (126 New Administrative Units + Clusters) */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                  Khu vực (Hà Nội)
+                  Địa bàn Hà Nội (Xã/Phường mới)
                 </label>
                 <select
                   value={filterDistrict}
                   onChange={(e) => setFilterDistrict(e.target.value)}
                   className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {DISTRICT_OPTIONS.map((opt) => (
-                    <option key={opt.code} value={opt.code}>
-                      {opt.label}
-                    </option>
+                  <option value="">Tất cả 126 xã / phường Hà Nội</option>
+                  <optgroup label="── Lọc nhanh theo Cụm Khu Vực ──">
+                    {HANOI_AREA_CLUSTERS.map((cluster) => (
+                      <option
+                        key={`cluster:${cluster.code}`}
+                        value={`cluster:${cluster.code}`}
+                      >
+                        Toàn bộ {cluster.label} ({cluster.units.length} ĐVHC mới)
+                      </option>
+                    ))}
+                  </optgroup>
+                  {HANOI_AREA_CLUSTERS.map((cluster) => (
+                    <optgroup
+                      key={cluster.code}
+                      label={`── ${cluster.label} (${cluster.units.length} xã/phường mới) ──`}
+                    >
+                      {cluster.units.map((u) => (
+                        <option key={u.code} value={u.code}>
+                          {u.nameVi}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </div>
@@ -532,7 +635,7 @@ export function DiscoveryView({
                 Không tìm thấy ứng viên phù hợp với bộ lọc
               </h3>
               <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-                Các tiêu chí tìm kiếm hiện tại có thể hơi chặt chẽ. Bạn hãy thử mở rộng khoảng giá hoặc chọn tất cả quận để xem thêm nhiều hồ sơ bạn cùng phòng nhé.
+                Các tiêu chí tìm kiếm hiện tại có thể hơi chặt chẽ. Bạn hãy thử mở rộng khoảng giá hoặc chọn tất cả xã/phường Hà Nội để xem thêm nhiều hồ sơ bạn cùng phòng nhé.
               </p>
               <button
                 onClick={resetFilters}
@@ -544,21 +647,98 @@ export function DiscoveryView({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredExploreCandidates.map((item) => (
-                <CandidateCard
-                  key={item.candidate.userId}
-                  item={item}
-                  onLike={handleLike}
-                  onPass={handlePass}
-                />
-              ))}
+              {filteredExploreCandidates.map((item) => {
+                const uid = item.candidate.userId;
+                return (
+                  <CandidateCard
+                    key={uid}
+                    item={item}
+                    onLike={handleLike}
+                    onPass={handlePass}
+                    onUnlike={handleUnlike}
+                    initialLiked={likedMap.has(uid)}
+                    initialMatched={matchedSet.has(uid)}
+                    likedAt={likedMap.get(uid) || null}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
       {/* ==============================================================
-          5. MUTUAL MATCH CELEBRATION MODAL
+          5. TAB 3: LỊCH SỬ ĐÃ THÍCH (LIKED HISTORY IN DISCOVERY)
+          ============================================================== */}
+      {activeTab === "liked_history" && (
+        <div className="py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 bg-pink-50/70 border border-pink-200/80 rounded-2xl p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center flex-shrink-0">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Bạn đã nhấn Thích {likedCandidates.length} ứng viên
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Khi đối phương cũng nhấn Thích bạn, hai bạn sẽ được ghép đôi hai chiều và mở khóa nhắn tin trực tiếp.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/matches?tab=history"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-pink-50 text-pink-700 border border-pink-200 text-xs font-bold shadow-sm transition-colors self-start sm:self-auto whitespace-nowrap"
+            >
+              <span>Quản lý Ghép đôi & Lịch sử thích</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          {likedCandidates.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center max-w-lg mx-auto my-8 shadow-sm">
+              <div className="w-16 h-16 rounded-full bg-pink-50 text-pink-500 flex items-center justify-center mx-auto mb-4">
+                <Heart className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-1">
+                Bạn chưa nhấn Thích ứng viên nào
+              </h3>
+              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                Hãy khám phá danh sách đề xuất hoặc toàn bộ ứng viên và nhấn nút{" "}
+                <strong>"Thích"</strong> trên hồ sơ bạn muốn kết nối ở ghép. Danh sách những người bạn đã thích sẽ được lưu lại tại đây!
+              </p>
+              <button
+                onClick={() => setActiveTab("top_picks")}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-xs shadow-md shadow-blue-500/20 hover:bg-blue-700 transition-colors"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Xem ứng viên đề xuất ngay</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {likedCandidates.map((item) => {
+                const uid = item.candidate.userId;
+                return (
+                  <CandidateCard
+                    key={uid}
+                    item={item}
+                    onLike={handleLike}
+                    onPass={handlePass}
+                    onUnlike={handleUnlike}
+                    initialLiked={true}
+                    initialMatched={matchedSet.has(uid)}
+                    likedAt={likedMap.get(uid) || null}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==============================================================
+          6. MUTUAL MATCH CELEBRATION MODAL
           ============================================================== */}
       <MutualMatchModal
         isOpen={matchModalOpen}
