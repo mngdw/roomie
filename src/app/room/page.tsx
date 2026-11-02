@@ -2,16 +2,14 @@ import { redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
 import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import Link from "next/link";
 import {
   Building,
   Check,
   MapPin,
-  Calendar,
-  Users,
   Home,
-  ShieldCheck,
   Edit3,
 } from "lucide-react";
 
@@ -21,9 +19,19 @@ export default async function RoomPage() {
     redirect("/login");
   }
 
-  const user = await withAdminDb(async (client) => {
-    return await fetchCandidateUser(client, currentUserId);
-  });
+  let user = null;
+  try {
+    user = await withAdminDb(async (client) => {
+      return await fetchCandidateUser(client, currentUserId);
+    });
+  } catch (err) {
+    console.warn("RoomPage DB fallback active:", (err as Error).message);
+    user = getFallbackCandidateUser(currentUserId);
+  }
+
+  if (!user) {
+    user = getFallbackCandidateUser(currentUserId);
+  }
 
   const room = user?.room;
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
 import { OnboardingWizard } from "./OnboardingWizard";
 
 export default async function OnboardingPage() {
@@ -10,9 +11,19 @@ export default async function OnboardingPage() {
     redirect("/login");
   }
 
-  const user = await withAdminDb(async (client) => {
-    return await fetchCandidateUser(client, currentUserId);
-  });
+  let user = null;
+  try {
+    user = await withAdminDb(async (client) => {
+      return await fetchCandidateUser(client, currentUserId);
+    });
+  } catch (err) {
+    console.warn("OnboardingPage DB fallback active:", (err as Error).message);
+    user = getFallbackCandidateUser(currentUserId);
+  }
+
+  if (!user) {
+    user = getFallbackCandidateUser(currentUserId);
+  }
 
   const existingAnswers = user
     ? Array.from(user.answers.entries()).map(([qNum, ans]) => ({

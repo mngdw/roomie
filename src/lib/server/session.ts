@@ -4,10 +4,10 @@
  */
 import { cookies } from "next/headers";
 import { withAdminDb } from "./db";
+import { DEMO_USERS, DEFAULT_USER_ID } from "@/lib/constants/demo-users";
+import { getFallbackUserSummary } from "@/lib/data/fallback-candidates";
 
 export const SESSION_COOKIE_NAME = "roomie_user_id";
-
-import { DEMO_USERS, DEFAULT_USER_ID } from "@/lib/constants/demo-users";
 export { DEMO_USERS, DEFAULT_USER_ID };
 
 /**
@@ -59,6 +59,7 @@ export interface UserSummary {
 
 /**
  * Loads the current user's profile and questionnaire completion status.
+ * Automatically falls back to built-in seed persona if the database is paused or unreachable.
  */
 export async function getCurrentUser(): Promise<UserSummary | null> {
   const userId = await getCurrentUserId();
@@ -66,8 +67,8 @@ export async function getCurrentUser(): Promise<UserSummary | null> {
     return null;
   }
 
-  return withAdminDb(async (client) => {
-    try {
+  try {
+    return await withAdminDb(async (client) => {
       const pRes = await client.query(
         `select p.*, 
                 (select status from public.verification_records v where v.user_id = p.user_id order by v.created_at desc limit 1) as verification_status,
@@ -79,7 +80,7 @@ export async function getCurrentUser(): Promise<UserSummary | null> {
 
       const row = pRes.rows[0];
       if (!row) {
-        return null;
+        return getFallbackUserSummary(userId);
       }
 
       return {
@@ -98,9 +99,9 @@ export async function getCurrentUser(): Promise<UserSummary | null> {
         cityCode: row.city_code,
         districtCode: row.district_code,
       };
-    } catch (err) {
-      console.error("getCurrentUser error:", err);
-      return null;
-    }
-  });
+    });
+  } catch (err) {
+    console.warn("getCurrentUser DB fallback active:", (err as Error).message);
+    return getFallbackUserSummary(userId);
+  }
 }

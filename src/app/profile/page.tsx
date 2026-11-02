@@ -2,23 +2,15 @@ import { redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
 import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import Link from "next/link";
 import {
-  User,
   Edit3,
   ClipboardList,
   CheckCircle2,
   MapPin,
   GraduationCap,
-  Home,
-  ShieldCheck,
-  Moon,
-  Sun,
-  Sparkles,
-  Volume2,
-  Users,
-  Coffee,
   Heart,
 } from "lucide-react";
 
@@ -29,9 +21,19 @@ export default async function MyProfilePage() {
   }
   const currentUser = await getCurrentUser();
 
-  const user = await withAdminDb(async (client) => {
-    return await fetchCandidateUser(client, currentUserId);
-  });
+  let user = null;
+  try {
+    user = await withAdminDb(async (client) => {
+      return await fetchCandidateUser(client, currentUserId);
+    });
+  } catch (err) {
+    console.warn("MyProfilePage DB fallback active:", (err as Error).message);
+    user = getFallbackCandidateUser(currentUserId);
+  }
+
+  if (!user) {
+    user = getFallbackCandidateUser(currentUserId);
+  }
 
   if (!user) {
     return (
@@ -40,14 +42,6 @@ export default async function MyProfilePage() {
       </div>
     );
   }
-
-  // Questionnaire answers lookup for lifestyle preview
-  const q11Ans = user.answers.get(11)?.optionValues[0];
-  const q12Ans = user.answers.get(12)?.optionValues[0];
-  const q6Ans = user.answers.get(6)?.optionValues[0];
-  const q13Ans = user.answers.get(13)?.optionValues[0];
-  const q18Ans = user.answers.get(18)?.optionValues[0];
-  const q10Ans = user.answers.get(10)?.optionValues[0];
 
   const districtName = getHanoiAreaLabel(user.districtCode, {
     includeCluster: true,

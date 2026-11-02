@@ -4,6 +4,12 @@ import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
 import { scorePair } from "@/lib/matching/scoring";
 import {
+  getFallbackCandidateUser,
+  getExactFallbackCandidateUser,
+  FALLBACK_MATCHES,
+  FALLBACK_LIKES,
+} from "@/lib/data/fallback-candidates";
+import {
   MatchesClient,
   type MatchItem,
   type SentLikeItem,
@@ -24,8 +30,12 @@ export default async function MatchesPage({ searchParams }: MatchesPageProps) {
   }
   const currentUser = await getCurrentUser();
 
-  const { matchesData, sentLikesData, receivedLikesData } = await withAdminDb(
-    async (client) => {
+  let matchesData: MatchItem[] = [];
+  let sentLikesData: SentLikeItem[] = [];
+  let receivedLikesData: ReceivedLikeItem[] = [];
+
+  try {
+    const dbResult = await withAdminDb(async (client) => {
       const viewer = await fetchCandidateUser(client, currentUserId);
 
       // 1. Fetch active matches
@@ -153,8 +163,68 @@ export default async function MatchesPage({ searchParams }: MatchesPageProps) {
         sentLikesData: sentLikes,
         receivedLikesData: receivedLikes,
       };
+    });
+
+    matchesData = dbResult.matchesData;
+    sentLikesData = dbResult.sentLikesData;
+    receivedLikesData = dbResult.receivedLikesData;
+  } catch (err) {
+    console.warn("MatchesPage DB fallback active:", (err as Error).message);
+    const viewer = getFallbackCandidateUser(currentUserId);
+    const partnerConvMap = new Map<string, string>();
+
+    for (const m of FALLBACK_MATCHES) {
+      if (m.userA === currentUserId || m.userB === currentUserId) {
+        const partnerId = m.userA === currentUserId ? m.userB : m.userA;
+        const partner = getExactFallbackCandidateUser(partnerId);
+        if (partner) {
+          partnerConvMap.set(partnerId, m.conversationId);
+          matchesData.push({
+            matchId: m.id,
+            matchedAt: m.createdAt,
+            conversationId: m.conversationId,
+            partner,
+            compatibility: viewer
+              ? scorePair(viewer.answers, partner.answers)
+              : null,
+          });
+        }
+      }
     }
-  );
+
+    for (const l of FALLBACK_LIKES) {
+      if (l.fromUser === currentUserId) {
+        const target = getExactFallbackCandidateUser(l.toUser);
+        if (target) {
+          sentLikesData.push({
+            targetUserId: l.toUser,
+            likedAt: l.createdAt,
+            isMatched: partnerConvMap.has(l.toUser),
+            conversationId: partnerConvMap.get(l.toUser) || null,
+            target,
+            compatibility: viewer
+              ? scorePair(viewer.answers, target.answers)
+              : null,
+          });
+        }
+      }
+      if (l.toUser === currentUserId) {
+        const sender = getExactFallbackCandidateUser(l.fromUser);
+        if (sender) {
+          receivedLikesData.push({
+            fromUserId: l.fromUser,
+            likedAt: l.createdAt,
+            isMatched: partnerConvMap.has(l.fromUser),
+            conversationId: partnerConvMap.get(l.fromUser) || null,
+            sender,
+            compatibility: viewer
+              ? scorePair(viewer.answers, sender.answers)
+              : null,
+          });
+        }
+      }
+    }
+  }
 
   const initialTab =
     tab === "history"

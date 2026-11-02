@@ -2,31 +2,24 @@ import { notFound } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import {
+  getFallbackCandidateUser,
+  getExactFallbackCandidateUser,
+} from "@/lib/data/fallback-candidates";
 import { scorePair } from "@/lib/matching/scoring";
 import { CandidateProfileHeader } from "@/components/CandidateProfileHeader";
 import { CandidateNoteCard } from "@/components/CandidateNoteCard";
 import { getCandidateNoteAction, getRelationshipStatusAction } from "@/app/actions";
 import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
 import {
-  Heart,
-  Clock,
   Sparkles,
-  ShieldCheck,
   Check,
-  AlertCircle,
-  Home,
-  CheckCircle2,
   Users,
-  Calendar,
-  Building,
   Coffee,
   Volume2,
   Moon,
   Sun,
-  Flame,
-  Cat,
 } from "lucide-react";
-import Link from "next/link";
 
 interface ProfilePageProps {
   params: Promise<{ id: string }>;
@@ -43,24 +36,41 @@ export default async function CandidateProfilePage({
   const currentUserId = await getCurrentUserId();
   const currentUser = await getCurrentUser();
 
-  const { candidate, viewer } = await withAdminDb(async (client) => {
-    const c = await fetchCandidateUser(client, id);
-    const v = currentUserId ? await fetchCandidateUser(client, currentUserId) : null;
-    return { candidate: c, viewer: v };
-  });
+  let candidate = null;
+  let viewer = null;
+
+  try {
+    const dbRes = await withAdminDb(async (client) => {
+      const c = await fetchCandidateUser(client, id);
+      const v = currentUserId ? await fetchCandidateUser(client, currentUserId) : null;
+      return { candidate: c, viewer: v };
+    });
+    candidate = dbRes.candidate;
+    viewer = dbRes.viewer;
+  } catch (err) {
+    console.warn("CandidateProfilePage DB fallback active:", (err as Error).message);
+    candidate = getExactFallbackCandidateUser(id);
+    viewer = currentUserId ? getFallbackCandidateUser(currentUserId) : null;
+  }
+
+  if (!candidate) {
+    candidate = getExactFallbackCandidateUser(id);
+  }
+  if (!viewer && currentUserId) {
+    viewer = getFallbackCandidateUser(currentUserId);
+  }
 
   if (!candidate) {
     notFound();
   }
 
-  let compatibility = viewer
+  const compatibility = viewer
     ? scorePair(viewer.answers, candidate.answers)
     : undefined;
 
   const existingNote = await getCandidateNoteAction(id);
 
   // Derive 3 personality trait percentages from Q28, Q29, Q30
-  // Values are 1 to 5 scale -> convert to percentage: (val / 5) * 100
   const q28Ans = candidate.answers.get(28)?.optionValues[0] ?? 4;
   const q29Ans = candidate.answers.get(29)?.optionValues[0] ?? 4;
   const q30Ans = candidate.answers.get(30)?.optionValues[0] ?? 4;
@@ -70,16 +80,12 @@ export default async function CandidateProfilePage({
   const opennessPct = Math.round((q30Ans / 5) * 100);
 
   // Lifestyle answers lookup
-  const q1Ans = candidate.answers.get(1)?.optionValues[0]; // Smoking
-  const q2Ans = candidate.answers.get(2)?.optionValues[0]; // Pets
   const q6Ans = candidate.answers.get(6)?.optionValues[0]; // Cleaning frequency
   const q10Ans = candidate.answers.get(10)?.optionValues[0]; // Cooking
   const q11Ans = candidate.answers.get(11)?.optionValues[0]; // Bedtime
   const q12Ans = candidate.answers.get(12)?.optionValues[0]; // Waketime
   const q13Ans = candidate.answers.get(13)?.optionValues[0]; // Quiet need
   const q18Ans = candidate.answers.get(18)?.optionValues[0]; // Guests
-  const q19Ans = candidate.answers.get(19)?.optionValues[0]; // Overnight guests
-  const q23Ans = candidate.answers.get(23)?.optionValues[0]; // Sharing items
 
   const isLifestyleTab = tab === "lifestyle";
 
@@ -96,11 +102,7 @@ export default async function CandidateProfilePage({
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {isLifestyleTab ? (
-          /* ========================================================
-             TAB 2: LỐI SỐNG & PHÒNG TRỌ (Slide 6 & Slide 7)
-             ======================================================== */
           <div className="space-y-6">
-            {/* Room Details Block (if has_room) */}
             {candidate.housingStatus === "has_room" && candidate.room ? (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
@@ -155,7 +157,6 @@ export default async function CandidateProfilePage({
                   </div>
                 </div>
 
-                {/* Facilities List */}
                 <div>
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
                     Tiện nghi có sẵn trong phòng
@@ -180,7 +181,6 @@ export default async function CandidateProfilePage({
                 </div>
               </div>
             ) : candidate.roomPreferences ? (
-              /* Seeker Preferences Block */
               <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
                 <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
                   Nhu cầu tìm phòng
@@ -216,7 +216,6 @@ export default async function CandidateProfilePage({
               </div>
             ) : null}
 
-            {/* Lifestyle Matrix Block */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                 Thói quen sinh hoạt hàng ngày
@@ -311,11 +310,7 @@ export default async function CandidateProfilePage({
             </div>
           </div>
         ) : (
-          /* ========================================================
-             TAB 1: THÔNG TIN CÁ NHÂN & TÍNH CÁCH (Slide 5)
-             ======================================================== */
           <div className="space-y-6">
-            {/* Bio Card */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
               <h2 className="text-base font-bold text-slate-900 mb-3">
                 Giới thiệu bản thân
@@ -327,7 +322,6 @@ export default async function CandidateProfilePage({
               </p>
             </div>
 
-            {/* Derived Personality Traits (Slide 5: 3 Bars) */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -344,7 +338,6 @@ export default async function CandidateProfilePage({
               </div>
 
               <div className="space-y-4">
-                {/* Trait 1: Responsibility */}
                 <div>
                   <div className="flex justify-between text-xs font-semibold mb-1.5">
                     <span className="text-slate-800">Mức độ cam kết & Trách nhiệm</span>
@@ -361,7 +354,6 @@ export default async function CandidateProfilePage({
                   </p>
                 </div>
 
-                {/* Trait 2: Patience */}
                 <div>
                   <div className="flex justify-between text-xs font-semibold mb-1.5">
                     <span className="text-slate-800">Kiên nhẫn & Bình tĩnh</span>
@@ -378,7 +370,6 @@ export default async function CandidateProfilePage({
                   </p>
                 </div>
 
-                {/* Trait 3: Openness */}
                 <div>
                   <div className="flex justify-between text-xs font-semibold mb-1.5">
                     <span className="text-slate-800">Cởi mở & Hòa đồng</span>
@@ -397,7 +388,6 @@ export default async function CandidateProfilePage({
               </div>
             </div>
 
-            {/* Roommate Criteria Block */}
             {candidate.roommatePreferences && (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -435,7 +425,6 @@ export default async function CandidateProfilePage({
                   </div>
                 </div>
 
-                {/* Requirement Tags */}
                 {candidate.roommatePreferences.requirementTags.length > 0 && (
                   <div>
                     <div className="text-xs font-bold text-slate-500 mb-2">
@@ -458,7 +447,6 @@ export default async function CandidateProfilePage({
           </div>
         )}
 
-        {/* Private Candidate Evaluation & Notes */}
         <div className="mt-8">
           <CandidateNoteCard
             candidateId={candidate.userId}

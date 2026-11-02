@@ -2,25 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withSessionDb } from "@/lib/server/db";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire/catalog.generated";
+import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
 
 export async function POST(request: NextRequest) {
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const answers: Array<{
+    questionNumber: number;
+    optionValues: number[];
+    otherText?: string | null;
+  }> = body.answers;
+
+  if (!Array.isArray(answers)) {
+    return NextResponse.json({ error: "Invalid answers array" }, { status: 400 });
+  }
+
   try {
-    const currentUserId = await getCurrentUserId();
-    if (!currentUserId) {
-      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const answers: Array<{
-      questionNumber: number;
-      optionValues: number[];
-      otherText?: string | null;
-    }> = body.answers;
-
-    if (!Array.isArray(answers)) {
-      return NextResponse.json({ error: "Invalid answers array" }, { status: 400 });
-    }
-
     const numToId = new Map(QUESTIONNAIRE_QUESTIONS.map((q) => [q.number, q.id]));
 
     await withSessionDb(currentUserId, async (client) => {
@@ -45,9 +46,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, saved: answers.length });
   } catch (err) {
-    return NextResponse.json(
-      { error: (err as Error).message },
-      { status: 500 }
-    );
+    console.warn("POST /api/questionnaire DB fallback active:", (err as Error).message);
+    const fbUser = getFallbackCandidateUser(currentUserId);
+    if (fbUser) {
+      for (const ans of answers) {
+        fbUser.answers.set(ans.questionNumber, {
+          optionValues: ans.optionValues,
+          otherText: ans.otherText || null,
+        });
+      }
+    }
+    return NextResponse.json({ ok: true, saved: answers.length, fallback: true });
   }
 }

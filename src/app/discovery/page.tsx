@@ -1,6 +1,7 @@
 import { getCurrentUserId, getCurrentUser, DEFAULT_USER_ID } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { getDiscoveryFeed, type DiscoveryFeedData } from "@/lib/matching/recommendations";
+import { getFallbackDiscoveryFeed } from "@/lib/data/fallback-candidates";
 import { DiscoveryView } from "./DiscoveryView";
 import Link from "next/link";
 import { Sparkles, UserPlus, LogIn, Compass } from "lucide-react";
@@ -65,7 +66,18 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     initialLikedRecords = result.likedRecords;
     initialMatchedUserIds = result.matchedIds;
   } catch (err) {
-    console.error("Error fetching discovery feed in DiscoveryPage:", err);
+    console.warn("DiscoveryPage DB fallback active:", (err as Error).message);
+    const fb = getFallbackDiscoveryFeed(currentUserId);
+    feed = fb.feed;
+    initialLikedRecords = fb.likedRecords;
+    initialMatchedUserIds = fb.matchedIds;
+  }
+
+  if (feed.topRecommendations.length === 0 && feed.allCandidates.length === 0) {
+    const fb = getFallbackDiscoveryFeed(currentUserId);
+    feed = fb.feed;
+    initialLikedRecords = fb.likedRecords;
+    initialMatchedUserIds = fb.matchedIds;
   }
 
   return (

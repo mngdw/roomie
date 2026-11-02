@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
 import { EditProfileClient } from "./EditProfileClient";
 
 export default async function EditProfilePage() {
@@ -10,9 +11,19 @@ export default async function EditProfilePage() {
     redirect("/login");
   }
 
-  const user = await withAdminDb(async (client) => {
-    return await fetchCandidateUser(client, currentUserId);
-  });
+  let user = null;
+  try {
+    user = await withAdminDb(async (client) => {
+      return await fetchCandidateUser(client, currentUserId);
+    });
+  } catch (err) {
+    console.warn("EditProfilePage DB fallback active:", (err as Error).message);
+    user = getFallbackCandidateUser(currentUserId);
+  }
+
+  if (!user) {
+    user = getFallbackCandidateUser(currentUserId);
+  }
 
   if (!user) {
     notFound();

@@ -2,6 +2,10 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import {
+  getFallbackCandidateUser,
+  getExactFallbackCandidateUser,
+} from "@/lib/data/fallback-candidates";
 import { scorePair } from "@/lib/matching/scoring";
 import { generateCompatibilityExplanation } from "@/lib/matching/explanation";
 import { CandidateProfileHeader } from "@/components/CandidateProfileHeader";
@@ -12,13 +16,9 @@ import { RoommateAgreementAdvice } from "@/components/RoommateAgreementAdvice";
 import { CandidateNoteCard } from "@/components/CandidateNoteCard";
 import { getCandidateNoteAction, getRelationshipStatusAction } from "@/app/actions";
 import {
-  Sparkles,
   CheckCircle2,
   AlertTriangle,
-  MessageSquare,
-  ShieldCheck,
   TrendingUp,
-  HeartHandshake,
 } from "lucide-react";
 
 interface CompatibilityPageProps {
@@ -35,11 +35,29 @@ export default async function CompatibilityPage({
   }
   const currentUser = await getCurrentUser();
 
-  const { candidate, viewer } = await withAdminDb(async (client) => {
-    const c = await fetchCandidateUser(client, id);
-    const v = await fetchCandidateUser(client, currentUserId);
-    return { candidate: c, viewer: v };
-  });
+  let candidate = null;
+  let viewer = null;
+
+  try {
+    const dbRes = await withAdminDb(async (client) => {
+      const c = await fetchCandidateUser(client, id);
+      const v = await fetchCandidateUser(client, currentUserId);
+      return { candidate: c, viewer: v };
+    });
+    candidate = dbRes.candidate;
+    viewer = dbRes.viewer;
+  } catch (err) {
+    console.warn("CompatibilityPage DB fallback active:", (err as Error).message);
+    candidate = getExactFallbackCandidateUser(id);
+    viewer = getFallbackCandidateUser(currentUserId);
+  }
+
+  if (!candidate) {
+    candidate = getExactFallbackCandidateUser(id);
+  }
+  if (!viewer) {
+    viewer = getFallbackCandidateUser(currentUserId);
+  }
 
   if (!candidate || !viewer) {
     notFound();
