@@ -217,32 +217,85 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
   if (!currentUserId) {
     return { success: false, matched: false, error: "Chưa đăng nhập" };
   }
+  if (!targetUserId || targetUserId === currentUserId) {
+    return { success: false, matched: false, error: "Người dùng không hợp lệ" };
+  }
 
   try {
-    const result = await withSessionDb(currentUserId, async (client) => {
-      const res = await client.query(
-        "select public.rpc_like_user($1) as data",
-        [targetUserId]
+    const dbOutcome = await withAdminDb(async (client) => {
+      const [userLow, userHigh] =
+        currentUserId < targetUserId
+          ? [currentUserId, targetUserId]
+          : [targetUserId, currentUserId];
+
+      // 1. Remove any previous pass
+      await client.query(
+        `delete from public.passes where from_user = $1 and to_user = $2`,
+        [currentUserId, targetUserId]
       );
-      return res.rows[0]?.data;
-    });
 
-    const isMatched = !!result?.matched;
-    let convId = result?.conversation_id;
-    let contactInfo: ContactInfo | undefined;
+      // 2. Insert like idempotently
+      const likeIns = await client.query(
+        `insert into public.likes (from_user, to_user)
+         values ($1, $2)
+         on conflict (from_user, to_user) do nothing
+         returning id`,
+        [currentUserId, targetUserId]
+      );
+      const isNewLike = likeIns.rows.length > 0;
 
-    if (isMatched) {
-      // Load contact info & ensure conversationId
-      await withAdminDb(async (adminClient) => {
-        if (!convId && result?.match_id) {
-          const cRes = await adminClient.query(
-            `select id from public.conversations where match_id = $1`,
-            [result.match_id]
+      // 3. Check if reciprocal like or existing match exists
+      const recipRes = await client.query(
+        `select exists (
+           select 1 from public.likes where from_user = $1 and to_user = $2
+         ) as has_reciprocal`,
+        [targetUserId, currentUserId]
+      );
+      const hasReciprocal = !!recipRes.rows[0]?.has_reciprocal;
+
+      let matchId: string | undefined;
+      let convId: string | undefined;
+      let isMatched = false;
+      let contactInfo: ContactInfo | undefined;
+
+      if (hasReciprocal) {
+        isMatched = true;
+        const matchIns = await client.query(
+          `insert into public.matches (user_a, user_b, status)
+           values ($1, $2, 'active')
+           on conflict (user_a, user_b) do update set status = 'active', updated_at = now()
+           returning id`,
+          [userLow, userHigh]
+        );
+        matchId = matchIns.rows[0]?.id;
+
+        if (matchId) {
+          const convIns = await client.query(
+            `insert into public.conversations (match_id)
+             values ($1)
+             on conflict (match_id) do update set updated_at = now()
+             returning id`,
+            [matchId]
           );
-          convId = cRes.rows[0]?.id;
+          convId = convIns.rows[0]?.id;
+
+          // Notify both users of mutual match
+          if (isNewLike) {
+            await client.query(
+              `insert into public.notifications (user_id, type, actor_id, payload)
+               values
+                 ($1, 'mutual_match', $2, $3::jsonb),
+                 ($2, 'mutual_match', $1, $3::jsonb)`,
+              [
+                currentUserId,
+                targetUserId,
+                JSON.stringify({ match_id: matchId, conversation_id: convId }),
+              ]
+            );
+          }
         }
 
-        const infoRes = await adminClient.query(
+        const infoRes = await client.query(
           `select p.phone, p.zalo, p.facebook, u.email
            from public.profiles p
            left join auth.users u on u.id = p.user_id
@@ -258,8 +311,21 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
             facebook: r.facebook || null,
           };
         }
-      });
-    }
+      } else if (isNewLike) {
+        await client.query(
+          `insert into public.notifications (user_id, type, actor_id, payload)
+           values ($1, 'new_like', $2, '{}'::jsonb)`,
+          [targetUserId, currentUserId]
+        );
+      }
+
+      return {
+        isMatched,
+        matchId,
+        convId,
+        contactInfo,
+      };
+    });
 
     revalidatePath("/discovery");
     revalidatePath("/matches");
@@ -268,10 +334,10 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
 
     return {
       success: true,
-      matched: isMatched,
-      matchId: result?.match_id,
-      conversationId: convId,
-      contactInfo,
+      matched: dbOutcome.isMatched,
+      matchId: dbOutcome.matchId,
+      conversationId: dbOutcome.convId,
+      contactInfo: dbOutcome.contactInfo,
     };
   } catch (err) {
     console.warn("likeUserAction DB fallback active:", (err as Error).message);
@@ -348,19 +414,24 @@ export async function passUserAction(targetUserId: string): Promise<PassResponse
   }
 
   try {
-    const result = await withSessionDb(currentUserId, async (client) => {
-      const res = await client.query(
-        "select public.rpc_pass_user($1) as data",
-        [targetUserId]
+    await withAdminDb(async (client) => {
+      await client.query(
+        `delete from public.likes where from_user = $1 and to_user = $2`,
+        [currentUserId, targetUserId]
       );
-      return res.rows[0]?.data;
+      await client.query(
+        `insert into public.passes (from_user, to_user)
+         values ($1, $2)
+         on conflict (from_user, to_user) do nothing`,
+        [currentUserId, targetUserId]
+      );
     });
 
     revalidatePath("/discovery");
     revalidatePath("/matches");
     return {
       success: true,
-      passed: !!result?.passed,
+      passed: true,
     };
   } catch (err) {
     console.warn("passUserAction DB fallback active:", (err as Error).message);
@@ -866,7 +937,12 @@ export async function updateProfileAction(
 export async function sendMessageAction(
   conversationId: string,
   body: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{
+  success: boolean;
+  messageId?: string;
+  message?: { id: string; sender_id: string; body: string; created_at: string };
+  error?: string;
+}> {
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
     return { success: false, error: "Chưa đăng nhập" };
@@ -876,45 +952,86 @@ export async function sendMessageAction(
   if (!trimmed) {
     return { success: false, error: "Nội dung tin nhắn không được để trống" };
   }
+  const safeBody = trimmed.slice(0, 2000);
 
   try {
     const result = await withAdminDb(async (client) => {
+      // Ensure conversation & active match
+      const checkRes = await client.query(
+        `
+        select c.id as conversation_id, m.id as match_id, m.status
+        from public.matches m
+        left join public.conversations c on c.match_id = m.id
+        where (c.id = $1 or m.id = $1)
+          and (m.user_a = $2 or m.user_b = $2)
+        limit 1
+      `,
+        [conversationId, currentUserId]
+      );
+
+      let realConvId = conversationId;
+      if (checkRes.rows.length > 0) {
+        const row = checkRes.rows[0];
+        if (row.status !== "active") {
+          await client.query(
+            `update public.matches set status = 'active', updated_at = now() where id = $1`,
+            [row.match_id]
+          );
+        }
+        if (row.conversation_id) {
+          realConvId = row.conversation_id;
+        } else {
+          const insC = await client.query(
+            `insert into public.conversations (match_id) values ($1) on conflict (match_id) do update set updated_at = now() returning id`,
+            [row.match_id]
+          );
+          realConvId = insC.rows[0]?.id || conversationId;
+        }
+      }
+
       const res = await client.query(
         `
         insert into public.messages (conversation_id, sender_id, body)
         values ($1, $2, $3)
-        returning id
+        returning id, sender_id, body, created_at
       `,
-        [conversationId, currentUserId, trimmed]
-      );
-
-      // Keep conversation timestamp updated
-      await client.query(
-        `update public.conversations set last_message_at = now(), updated_at = now() where id = $1`,
-        [conversationId]
+        [realConvId, currentUserId, safeBody]
       );
 
       return res.rows[0];
     });
 
-    revalidatePath(`/chat/${conversationId}`);
-    revalidatePath("/matches");
-    return { success: true, messageId: result?.id };
+    return {
+      success: true,
+      messageId: result?.id,
+      message: result
+        ? {
+            id: result.id,
+            sender_id: result.sender_id,
+            body: result.body,
+            created_at:
+              result.created_at instanceof Date
+                ? result.created_at.toISOString()
+                : String(result.created_at),
+          }
+        : undefined,
+    };
   } catch (err) {
     console.warn("sendMessageAction DB fallback active:", (err as Error).message);
     const msgId = `msg-fb-${Date.now()}`;
-    FALLBACK_MESSAGES.push({
+    const fbMsg = {
       id: msgId,
       conversation_id: conversationId,
       sender_id: currentUserId,
-      body: trimmed,
+      body: safeBody,
       created_at: new Date().toISOString(),
-    });
-    try {
-      revalidatePath(`/chat/${conversationId}`);
-      revalidatePath("/matches");
-    } catch {}
-    return { success: true, messageId: msgId };
+    };
+    FALLBACK_MESSAGES.push(fbMsg);
+    return {
+      success: true,
+      messageId: msgId,
+      message: fbMsg,
+    };
   }
 }
 

@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useTransition } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   MessageCircle,
-  X,
   Send,
   ChevronDown,
   Sparkles,
@@ -14,8 +13,8 @@ import {
   ArrowLeft,
   Compass,
   Users,
+  RotateCcw,
 } from "lucide-react";
-import { sendMessageAction } from "@/app/actions";
 
 interface ConversationSummary {
   conversationId: string;
@@ -46,6 +45,7 @@ interface MessageItem {
   sender_id: string;
   body: string;
   created_at: string;
+  status?: "sending" | "sent" | "error";
 }
 
 export function FloatingChatWidget({ currentUserId }: { currentUserId: string | null }) {
@@ -56,62 +56,93 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [inputText, setInputText] = useState("");
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [isSending, startSending] = useTransition();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastScrolledMsgIdRef = useRef<string | null>(null);
 
   // Don't show floating widget if already on the full-screen chat page
   const isOnChatPage = pathname.startsWith("/chat/");
 
   // Load conversation list
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     if (!currentUserId) return;
     try {
-      const res = await fetch("/api/conversations");
+      const res = await fetch("/api/conversations", { cache: "no-store" });
+      if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data.conversations)) {
         setConversations(data.conversations);
       }
-    } catch (err) {
+    } catch {
       // Ignore background fetch errors
     }
-  };
-
-  // Poll conversations every 10 seconds or when opened
-  useEffect(() => {
-    loadConversations();
-    const interval = setInterval(loadConversations, 10000);
-    return () => clearInterval(interval);
   }, [currentUserId]);
 
-  // Load messages when a conversation is selected
-  const loadMessages = async (convId: string) => {
-    setLoadingMessages(true);
-    try {
-      const res = await fetch(`/api/conversations?id=${convId}`);
-      const data = await res.json();
-      if (data.conversation?.messages) {
-        setMessages(data.conversation.messages);
+  // Poll conversations every 8 seconds or when opened
+  useEffect(() => {
+    loadConversations();
+    const interval = setInterval(loadConversations, 8000);
+    return () => clearInterval(interval);
+  }, [loadConversations]);
+
+  // Load messages for selected conversation (fast single-query endpoint)
+  const loadMessages = useCallback(
+    async (convId: string, isInitial = false) => {
+      if (isInitial) {
+        setLoadingMessages(true);
       }
-    } catch (err) {
-      console.error("Failed to load messages:", err);
-    } finally {
-      setLoadingMessages(false);
-    }
-  };
+      try {
+        const res = await fetch(
+          `/api/conversations?id=${encodeURIComponent(convId)}&messagesOnly=1`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverMsgs: MessageItem[] = data.conversation?.messages || [];
+        if (Array.isArray(serverMsgs)) {
+          setMessages((prev) => {
+            // Preserve any in-flight or errored optimistic messages so they never vanish during polling
+            const pendingOptimistic = prev.filter(
+              (m) =>
+                m.id.startsWith("temp-") &&
+                (m.status === "sending" || m.status === "error")
+            );
+            const serverIds = new Set(serverMsgs.map((m) => m.id));
+            const merged = [
+              ...serverMsgs,
+              ...pendingOptimistic.filter((m) => !serverIds.has(m.id)),
+            ];
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load messages:", err);
+      } finally {
+        if (isInitial) {
+          setLoadingMessages(false);
+        }
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (selectedConv) {
-      loadMessages(selectedConv.conversationId);
-      // Auto-poll messages for this conversation every 4 seconds while open
+      lastScrolledMsgIdRef.current = null;
+      loadMessages(selectedConv.conversationId, true);
+      // Fast 2.5s poll using lightweight messagesOnly=1 query
       const interval = setInterval(() => {
-        loadMessages(selectedConv.conversationId);
-      }, 4000);
+        loadMessages(selectedConv.conversationId, false);
+      }, 2500);
       return () => clearInterval(interval);
     }
-  }, [selectedConv?.conversationId]);
+  }, [selectedConv?.conversationId, loadMessages]);
 
+  // Smart auto-scroll: only scroll when the last message ID actually changes
   useEffect(() => {
-    if (selectedConv) {
+    if (!selectedConv || messages.length === 0) return;
+    const lastId = messages[messages.length - 1]?.id;
+    if (lastId && lastId !== lastScrolledMsgIdRef.current) {
+      lastScrolledMsgIdRef.current = lastId;
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, selectedConv]);
@@ -120,30 +151,90 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
     return null;
   }
 
+  const dispatchMessage = async (convId: string, tempId: string, text: string) => {
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: convId, body: text }),
+        cache: "no-store",
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+        );
+        return;
+      }
+
+      const savedMsg: MessageItem | undefined = data.message;
+      setMessages((prev) => {
+        if (!savedMsg) {
+          return prev.map((m) =>
+            m.id === tempId ? { ...m, status: "sent" } : m
+          );
+        }
+        // If poll already inserted savedMsg.id, remove tempId; otherwise replace tempId with savedMsg
+        const alreadyInList = prev.some((m) => m.id === savedMsg.id);
+        if (alreadyInList) {
+          return prev.filter((m) => m.id !== tempId);
+        }
+        return prev.map((m) =>
+          m.id === tempId ? { ...savedMsg, status: "sent" } : m
+        );
+      });
+
+      // Update conversation snippet immediately
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.conversationId === convId
+            ? {
+                ...c,
+                lastMessage: {
+                  body: text,
+                  sender_id: currentUserId,
+                  created_at: savedMsg?.created_at || new Date().toISOString(),
+                },
+              }
+            : c
+        )
+      );
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+      );
+    }
+  };
+
   const handleSendMessage = (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
+    const raw = textToSend !== undefined ? textToSend : inputText;
+    const text = raw.trim().slice(0, 2000);
     if (!text || !selectedConv) return;
 
-    setInputText("");
+    if (textToSend === undefined) {
+      setInputText("");
+    }
 
-    // Optimistic UI append
-    const tempId = "temp-" + Date.now();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const optimisticMsg: MessageItem = {
       id: tempId,
       sender_id: currentUserId,
       body: text,
       created_at: new Date().toISOString(),
+      status: "sending",
     };
-    setMessages((prev) => [...prev, optimisticMsg]);
 
-    startSending(async () => {
-      const res = await sendMessageAction(selectedConv.conversationId, text);
-      if (!res.success) {
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      } else {
-        loadConversations();
-      }
-    });
+    setMessages((prev) => [...prev, optimisticMsg]);
+    void dispatchMessage(selectedConv.conversationId, tempId, text);
+  };
+
+  const handleRetryMessage = (failedMsg: MessageItem) => {
+    if (!selectedConv) return;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "sending" } : m))
+    );
+    void dispatchMessage(selectedConv.conversationId, failedMsg.id, failedMsg.body);
   };
 
   const conversationStarters = [
@@ -159,28 +250,28 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
         <div className="mb-3 w-[360px] sm:w-[390px] h-[520px] max-h-[calc(100vh-6rem)] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3.5 px-4 flex items-center justify-between shadow-sm">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 min-w-0">
               {selectedConv ? (
                 <button
                   onClick={() => setSelectedConv(null)}
-                  className="p-1 rounded-lg hover:bg-white/10 text-white transition-colors"
+                  className="p-1 rounded-lg hover:bg-white/10 text-white transition-colors flex-shrink-0"
                   title="Quay lại danh sách"
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
               ) : (
-                <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
                   <MessageCircle className="w-4 h-4 text-white" />
                 </div>
               )}
 
-              <div>
-                <div className="font-bold text-sm tracking-tight flex items-center gap-1.5">
+              <div className="min-w-0">
+                <div className="font-bold text-sm tracking-tight flex items-center gap-1.5 truncate">
                   {selectedConv ? (
                     <>
-                      <span>{selectedConv.partner.displayName}</span>
+                      <span className="truncate">{selectedConv.partner.displayName}</span>
                       {selectedConv.partner.isVerified && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-200 fill-blue-500" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-200 fill-blue-500 flex-shrink-0" />
                       )}
                     </>
                   ) : (
@@ -197,11 +288,10 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
               </div>
             </div>
 
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 flex-shrink-0">
               {selectedConv && (
                 <Link
                   href={`/chat/${selectedConv.conversationId}`}
-                  target="_blank"
                   className="p-1.5 rounded-lg hover:bg-white/10 text-white/90 hover:text-white transition-colors"
                   title="Mở toàn màn hình"
                 >
@@ -223,7 +313,7 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
             /* Inside Conversation Chat View */
             <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden">
               {/* Message Feed */}
-              <div className="flex-1 p-3.5 overflow-y-auto space-y-2.5">
+              <div className="flex-1 p-3.5 overflow-y-auto overflow-x-hidden space-y-2.5">
                 {messages.length === 0 && !loadingMessages ? (
                   <div className="my-auto py-6 text-center">
                     <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-2">
@@ -258,20 +348,33 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
                     return (
                       <div
                         key={m.id}
-                        className={`flex flex-col ${
+                        className={`flex flex-col min-w-0 max-w-full ${
                           isMe ? "items-end" : "items-start"
                         } space-y-0.5`}
                       >
                         <div
-                          className={`max-w-[80%] px-3 py-2 rounded-2xl text-xs leading-relaxed shadow-2xs ${
+                          className={`max-w-[80%] px-3 py-2 rounded-2xl text-xs leading-relaxed shadow-2xs break-words [overflow-wrap:anywhere] [word-break:break-word] whitespace-pre-wrap select-text ${
                             isMe
                               ? "bg-blue-600 text-white rounded-br-none"
                               : "bg-white text-slate-800 border border-slate-200 rounded-bl-none"
-                          }`}
+                          } ${m.status === "sending" ? "opacity-80" : ""}`}
                         >
                           {m.body}
                         </div>
-                        <span className="text-[9px] text-slate-400 px-1">{time}</span>
+
+                        {m.status === "error" ? (
+                          <button
+                            onClick={() => handleRetryMessage(m)}
+                            className="inline-flex items-center gap-1 text-[10px] text-rose-600 hover:text-rose-700 font-semibold px-1"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" />
+                            <span>Chưa gửi được · Nhấn để gửi lại</span>
+                          </button>
+                        ) : (
+                          <span className="text-[9px] text-slate-400 px-1">
+                            {m.status === "sending" ? "Đang gửi..." : time}
+                          </span>
+                        )}
                       </div>
                     );
                   })
@@ -291,14 +394,15 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
                   <input
                     type="text"
                     value={inputText}
+                    maxLength={2000}
                     onChange={(e) => setInputText(e.target.value)}
                     placeholder="Nhập tin nhắn..."
-                    className="flex-1 bg-slate-100 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 min-w-0 bg-slate-100 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 select-text"
                   />
                   <button
                     type="submit"
-                    disabled={!inputText.trim() || isSending}
-                    className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 transition-colors shadow-sm"
+                    disabled={!inputText.trim()}
+                    className="p-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 transition-colors shadow-sm flex-shrink-0"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -307,7 +411,7 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
             </div>
           ) : (
             /* Conversation List View */
-            <div className="flex-1 flex flex-col overflow-y-auto divide-y divide-slate-100 bg-white">
+            <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden divide-y divide-slate-100 bg-white">
               {conversations.length === 0 ? (
                 <div className="p-8 text-center my-auto">
                   <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
@@ -342,7 +446,7 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
                     <button
                       key={c.conversationId}
                       onClick={() => setSelectedConv(c)}
-                      className="w-full text-left p-3.5 hover:bg-slate-50 transition-colors flex items-center gap-3"
+                      className="w-full text-left p-3.5 hover:bg-slate-50 transition-colors flex items-center gap-3 min-w-0"
                     >
                       {/* Avatar */}
                       <div className="relative flex-shrink-0">
@@ -358,18 +462,18 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
 
                       {/* Info & Last snippet */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
                           <span className="font-bold text-xs text-slate-900 truncate">
                             {partner.displayName}
                           </span>
                           {score !== undefined && (
-                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 flex-shrink-0">
                               {Math.round(score)}%
                             </span>
                           )}
                         </div>
 
-                        <div className="text-[11px] text-slate-500 truncate">
+                        <div className="text-[11px] text-slate-500 truncate break-all">
                           {last ? (
                             <span>
                               {isMe ? "Bạn: " : ""}

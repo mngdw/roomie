@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -8,19 +8,13 @@ import {
   CheckCircle2,
   Sparkles,
   Eye,
-  MessageSquare,
-  ShieldCheck,
-  Calendar,
-  DollarSign,
-  Coffee,
   PhoneCall,
-  Mail,
   Copy,
   Check,
   X,
+  RotateCcw,
 } from "lucide-react";
 import { MatchScoreBadge } from "@/components/MatchScoreBadge";
-import { sendMessageAction } from "@/app/actions";
 import type { CandidateUser, PairScoreResult } from "@/lib/matching/types";
 
 interface MessageItem {
@@ -28,6 +22,7 @@ interface MessageItem {
   sender_id: string;
   body: string;
   created_at: string;
+  status?: "sending" | "sent" | "error";
 }
 
 interface ChatClientProps {
@@ -49,40 +44,118 @@ export function ChatClient({
   const [inputText, setInputText] = useState("");
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastScrolledMsgIdRef = useRef<string | null>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const loadMessages = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/conversations?id=${encodeURIComponent(conversationId)}&messagesOnly=1`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const serverMsgs: MessageItem[] = data.conversation?.messages || [];
+      if (Array.isArray(serverMsgs)) {
+        setMessages((prev) => {
+          const pendingOptimistic = prev.filter(
+            (m) =>
+              m.id.startsWith("temp-") &&
+              (m.status === "sending" || m.status === "error")
+          );
+          const serverIds = new Set(serverMsgs.map((m) => m.id));
+          return [
+            ...serverMsgs,
+            ...pendingOptimistic.filter((m) => !serverIds.has(m.id)),
+          ];
+        });
+      }
+    } catch {
+      // Ignore background fetch error
+    }
+  }, [conversationId]);
 
+  // Poll messages every 2.5 seconds for real-time updates
   useEffect(() => {
-    scrollToBottom();
+    const interval = setInterval(loadMessages, 2500);
+    return () => clearInterval(interval);
+  }, [loadMessages]);
+
+  // Smart auto-scroll when new messages arrive or on initial mount
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastId = messages[messages.length - 1]?.id;
+    if (lastId && lastId !== lastScrolledMsgIdRef.current) {
+      lastScrolledMsgIdRef.current = lastId;
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
+  const dispatchMessage = async (tempId: string, text: string) => {
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, body: text }),
+        cache: "no-store",
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+        );
+        return;
+      }
+
+      const savedMsg: MessageItem | undefined = data.message;
+      setMessages((prev) => {
+        if (!savedMsg) {
+          return prev.map((m) =>
+            m.id === tempId ? { ...m, status: "sent" } : m
+          );
+        }
+        const alreadyInList = prev.some((m) => m.id === savedMsg.id);
+        if (alreadyInList) {
+          return prev.filter((m) => m.id !== tempId);
+        }
+        return prev.map((m) =>
+          m.id === tempId ? { ...savedMsg, status: "sent" } : m
+        );
+      });
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m))
+      );
+    }
+  };
+
   const handleSend = (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
+    const raw = textToSend !== undefined ? textToSend : inputText;
+    const text = raw.trim().slice(0, 2000);
     if (!text) return;
 
-    setInputText("");
+    if (textToSend === undefined) {
+      setInputText("");
+    }
 
-    // Optimistic message
-    const tempId = "temp-" + Date.now();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const optimisticMsg: MessageItem = {
       id: tempId,
       sender_id: currentUserId,
       body: text,
       created_at: new Date().toISOString(),
+      status: "sending",
     };
     setMessages((prev) => [...prev, optimisticMsg]);
+    void dispatchMessage(tempId, text);
+  };
 
-    startTransition(async () => {
-      const res = await sendMessageAction(conversationId, text);
-      if (!res.success) {
-        // Rollback on error
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      }
-    });
+  const handleRetryMessage = (failedMsg: MessageItem) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "sending" } : m))
+    );
+    void dispatchMessage(failedMsg.id, failedMsg.body);
   };
 
   // Conversation starters suggested by matching engine
@@ -103,15 +176,15 @@ export function ChatClient({
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col h-[calc(100vh-5rem)]">
       {/* Chat Header */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex items-center justify-between gap-3 mb-4">
-        <div className="flex items-center space-x-3.5">
+        <div className="flex items-center space-x-3.5 min-w-0">
           <Link
             href="/matches"
-            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
 
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-100 to-pink-100 text-purple-700 font-bold text-lg flex items-center justify-center border border-purple-200 shadow-sm">
               {partner.displayName[0]}
             </div>
@@ -125,16 +198,16 @@ export function ChatClient({
             )}
           </div>
 
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <h2 className="font-bold text-sm sm:text-base text-slate-900">
+              <h2 className="font-bold text-sm sm:text-base text-slate-900 truncate">
                 {partner.displayName}
               </h2>
-              <span className="text-xs text-slate-500 font-medium">
+              <span className="text-xs text-slate-500 font-medium flex-shrink-0">
                 ({partner.age}t)
               </span>
             </div>
-            <div className="text-[11px] text-slate-500">
+            <div className="text-[11px] text-slate-500 truncate">
               {partner.housingStatus === "has_room"
                 ? "Có phòng sẵn cho thuê ghép"
                 : "Đang tìm phòng"}
@@ -143,7 +216,7 @@ export function ChatClient({
         </div>
 
         {/* Right side: Match Badge, Contact & Profile Link */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {compatibility && (
             <Link
               href={`/compatibility/${partner.userId}`}
@@ -173,7 +246,7 @@ export function ChatClient({
       </div>
 
       {/* Message List */}
-      <div className="flex-1 bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm overflow-y-auto flex flex-col space-y-4">
+      <div className="flex-1 bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm overflow-y-auto overflow-x-hidden flex flex-col space-y-4">
         {/* Match Celebration Banner inside Chat */}
         <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-pink-50 to-indigo-50 border border-blue-100 text-center mx-auto max-w-md my-2">
           <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center mx-auto mb-2 shadow-sm">
@@ -219,20 +292,33 @@ export function ChatClient({
           return (
             <div
               key={msg.id}
-              className={`flex flex-col ${
+              className={`flex flex-col min-w-0 max-w-full ${
                 isMe ? "items-end" : "items-start"
               } space-y-1`}
             >
               <div
-                className={`max-w-[75%] sm:max-w-[65%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm ${
+                className={`max-w-[75%] sm:max-w-[65%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm break-words [overflow-wrap:anywhere] [word-break:break-word] whitespace-pre-wrap ${
                   isMe
                     ? "bg-blue-600 text-white rounded-br-none"
                     : "bg-slate-100 text-slate-900 rounded-bl-none"
-                }`}
+                } ${msg.status === "sending" ? "opacity-80" : ""}`}
               >
                 {msg.body}
               </div>
-              <span className="text-[10px] text-slate-400 px-1">{time}</span>
+
+              {msg.status === "error" ? (
+                <button
+                  onClick={() => handleRetryMessage(msg)}
+                  className="inline-flex items-center gap-1 text-[11px] text-rose-600 hover:text-rose-700 font-semibold px-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Chưa gửi được · Nhấn để gửi lại</span>
+                </button>
+              ) : (
+                <span className="text-[10px] text-slate-400 px-1">
+                  {msg.status === "sending" ? "Đang gửi..." : time}
+                </span>
+              )}
             </div>
           );
         })}
@@ -252,15 +338,16 @@ export function ChatClient({
           <input
             type="text"
             value={inputText}
+            maxLength={2000}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={`Nhắn tin cho ${partner.displayName}...`}
-            className="flex-1 bg-transparent px-3 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent px-3 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
           />
 
           <button
             type="submit"
-            disabled={!inputText.trim() || isPending}
-            className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 shadow-sm"
+            disabled={!inputText.trim()}
+            className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 shadow-sm flex-shrink-0"
           >
             <Send className="w-4 h-4" />
           </button>

@@ -29,9 +29,9 @@ export async function getDbPool(): Promise<pg.Pool> {
       pool = new pg.Pool({
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
-        max: 5,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 3500,
+        max: 10,
+        idleTimeoutMillis: 15000,
+        connectionTimeoutMillis: 8000,
       });
     } else {
       pool = new pg.Pool({
@@ -42,7 +42,7 @@ export async function getDbPool(): Promise<pg.Pool> {
         database: DEFAULT_DB_NAME,
         max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 3500,
+        connectionTimeoutMillis: 5000,
       });
     }
   }
