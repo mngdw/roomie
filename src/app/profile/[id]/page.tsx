@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
-import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -41,9 +41,12 @@ export default async function CandidateProfilePage({
 
   try {
     const dbRes = await withAdminDb(async (client) => {
-      const c = await fetchCandidateUser(client, id);
-      const v = currentUserId ? await fetchCandidateUser(client, currentUserId) : null;
-      return { candidate: c, viewer: v };
+      const idsToLoad = currentUserId ? [id, currentUserId] : [id];
+      const usersMap = await fetchCandidateUsersByIds(client, idsToLoad);
+      return {
+        candidate: usersMap.get(id) ?? null,
+        viewer: currentUserId ? usersMap.get(currentUserId) ?? null : null,
+      };
     });
     candidate = dbRes.candidate;
     viewer = dbRes.viewer;
@@ -68,7 +71,10 @@ export default async function CandidateProfilePage({
     ? scorePair(viewer.answers, candidate.answers)
     : undefined;
 
-  const existingNote = await getCandidateNoteAction(id);
+  const [existingNote, relationship] = await Promise.all([
+    getCandidateNoteAction(id),
+    currentUserId ? getRelationshipStatusAction(id) : Promise.resolve(undefined),
+  ]);
 
   // Derive 3 personality trait percentages from Q28, Q29, Q30
   const q28Ans = candidate.answers.get(28)?.optionValues[0] ?? 4;
@@ -88,8 +94,6 @@ export default async function CandidateProfilePage({
   const q18Ans = candidate.answers.get(18)?.optionValues[0]; // Guests
 
   const isLifestyleTab = tab === "lifestyle";
-
-  const relationship = currentUserId ? await getRelationshipStatusAction(id) : undefined;
 
   return (
     <div className="min-h-screen bg-slate-50">

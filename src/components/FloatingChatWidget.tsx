@@ -62,9 +62,10 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
   // Don't show floating widget if already on the full-screen chat page
   const isOnChatPage = pathname.startsWith("/chat/");
 
-  // Load conversation list
+  // Load conversation list (skips when tab is hidden)
   const loadConversations = useCallback(async () => {
     if (!currentUserId) return;
+    if (typeof document !== "undefined" && document.hidden) return;
     try {
       const res = await fetch("/api/conversations", { cache: "no-store" });
       if (!res.ok) return;
@@ -77,16 +78,19 @@ export function FloatingChatWidget({ currentUserId }: { currentUserId: string | 
     }
   }, [currentUserId]);
 
-  // Poll conversations every 8 seconds or when opened
+  // Poll conversations every 10 seconds or when opened
   useEffect(() => {
     loadConversations();
-    const interval = setInterval(loadConversations, 8000);
+    const interval = setInterval(loadConversations, 10000);
     return () => clearInterval(interval);
   }, [loadConversations]);
 
   // Load messages for selected conversation (fast single-query endpoint)
   const loadMessages = useCallback(
     async (convId: string, isInitial = false) => {
+      if (!isInitial && typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       if (isInitial) {
         setLoadingMessages(true);
       }

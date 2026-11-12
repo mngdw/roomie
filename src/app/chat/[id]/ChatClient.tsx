@@ -48,6 +48,7 @@ export function ChatClient({
   const lastScrolledMsgIdRef = useRef<string | null>(null);
 
   const loadMessages = useCallback(async () => {
+    if (typeof document !== "undefined" && document.hidden) return;
     try {
       const res = await fetch(
         `/api/conversations?id=${encodeURIComponent(conversationId)}&messagesOnly=1`,

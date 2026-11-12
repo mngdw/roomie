@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
-import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -80,10 +80,9 @@ export default async function ChatPage({ params }: ChatPageProps) {
       const partnerId =
         conv.user_a === currentUserId ? conv.user_b : conv.user_a;
 
-      // 2. Fetch partner, viewer, and chronological messages in parallel
-      const [partner, viewer, mRes] = await Promise.all([
-        fetchCandidateUser(client, partnerId),
-        fetchCandidateUser(client, currentUserId),
+      // 2. Fetch partner, viewer, and chronological messages in parallel (2 SQL queries total)
+      const [usersMap, mRes] = await Promise.all([
+        fetchCandidateUsersByIds(client, [partnerId, currentUserId]),
         client.query(
           `
           select id, sender_id, body, created_at
@@ -97,8 +96,8 @@ export default async function ChatPage({ params }: ChatPageProps) {
 
       return {
         realConvId,
-        partner,
-        viewer,
+        partner: usersMap.get(partnerId) ?? null,
+        viewer: usersMap.get(currentUserId) ?? null,
         messages: mRes.rows,
       };
     });

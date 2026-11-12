@@ -327,7 +327,6 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
       };
     });
 
-    revalidatePath("/discovery");
     revalidatePath("/matches");
     revalidatePath(`/profile/${targetUserId}`);
     revalidatePath(`/compatibility/${targetUserId}`);
@@ -380,7 +379,6 @@ export async function likeUserAction(targetUserId: string): Promise<LikeResponse
     const target = getExactFallbackCandidateUser(targetUserId);
 
     try {
-      revalidatePath("/discovery");
       revalidatePath("/matches");
       revalidatePath(`/profile/${targetUserId}`);
       revalidatePath(`/compatibility/${targetUserId}`);
@@ -427,7 +425,6 @@ export async function passUserAction(targetUserId: string): Promise<PassResponse
       );
     });
 
-    revalidatePath("/discovery");
     revalidatePath("/matches");
     return {
       success: true,
@@ -436,7 +433,6 @@ export async function passUserAction(targetUserId: string): Promise<PassResponse
   } catch (err) {
     console.warn("passUserAction DB fallback active:", (err as Error).message);
     try {
-      revalidatePath("/discovery");
       revalidatePath("/matches");
     } catch {}
     return {
@@ -465,7 +461,6 @@ export async function unlikeUserAction(
       );
     });
 
-    revalidatePath("/discovery");
     revalidatePath("/matches");
     revalidatePath(`/profile/${targetUserId}`);
     revalidatePath(`/compatibility/${targetUserId}`);
@@ -480,7 +475,6 @@ export async function unlikeUserAction(
       FALLBACK_LIKES.splice(idx, 1);
     }
     try {
-      revalidatePath("/discovery");
       revalidatePath("/matches");
       revalidatePath(`/profile/${targetUserId}`);
       revalidatePath(`/compatibility/${targetUserId}`);
@@ -751,24 +745,36 @@ export async function saveOnboardingAction(
         );
       }
 
-      // 4. Upsert 30 questionnaire answers
+      // 4. Bulk upsert all 30 questionnaire answers in a SINGLE SQL query
       const numToId = new Map(QUESTIONNAIRE_QUESTIONS.map((q) => [q.number, q.id]));
+      const valuesSql: string[] = [];
+      const params: unknown[] = [];
 
       for (const ans of data.answers) {
         const questionId = numToId.get(ans.questionNumber);
         if (!questionId) continue;
+        const offset = params.length;
+        valuesSql.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+        params.push(
+          currentUserId,
+          questionId,
+          ans.optionValues,
+          ans.otherText || null
+        );
+      }
 
+      if (valuesSql.length > 0) {
         await client.query(
           `
           insert into public.user_answers (
             user_id, question_id, option_values, other_text
-          ) values ($1, $2, $3, $4)
+          ) values ${valuesSql.join(", ")}
           on conflict (user_id, question_id) do update set
             option_values = excluded.option_values,
             other_text = excluded.other_text,
             updated_at = now()
         `,
-          [currentUserId, questionId, ans.optionValues, ans.otherText || null]
+          params
         );
       }
     });

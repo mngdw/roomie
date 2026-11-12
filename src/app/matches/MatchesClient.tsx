@@ -89,12 +89,15 @@ export function MatchesClient({
   }>({ id: "", displayName: "" });
 
   const handleUnlike = (targetUserId: string) => {
+    // Optimistically remove immediately in 0ms
+    const prevList = sentLikes;
+    setSentLikes((prev) =>
+      prev.filter((item) => item.targetUserId !== targetUserId)
+    );
     startTransition(async () => {
       const res = await unlikeUserAction(targetUserId);
-      if (res.success) {
-        setSentLikes((prev) =>
-          prev.filter((item) => item.targetUserId !== targetUserId)
-        );
+      if (!res.success) {
+        setSentLikes(prevList);
       }
     });
   };

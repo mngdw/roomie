@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
-import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
 import { scorePair } from "@/lib/matching/scoring";
 import {
   getFallbackCandidateUser,
@@ -36,45 +36,76 @@ export default async function MatchesPage({ searchParams }: MatchesPageProps) {
 
   try {
     const dbResult = await withAdminDb(async (client) => {
-      const viewer = await fetchCandidateUser(client, currentUserId);
-
-      // 1. Fetch active matches
-      const matchRes = await client.query(
+      // Ensure every active match has a conversation row in 1 bulk query
+      await client.query(
         `
-        select m.id as match_id,
-               m.created_at as matched_at,
-               c.id as conversation_id,
-               case when m.user_a = $1 then m.user_b else m.user_a end as partner_id
+        insert into public.conversations (match_id)
+        select m.id
         from public.matches m
         left join public.conversations c on c.match_id = m.id
         where (m.user_a = $1 or m.user_b = $1)
           and m.status = 'active'
-        order by m.created_at desc
+          and c.id is null
+        on conflict (match_id) do nothing
       `,
         [currentUserId]
       );
+
+      // 1. Fetch active matches, sent likes, and received likes
+      const [matchRes, sentRes, recvRes] = await Promise.all([
+        client.query(
+          `
+          select m.id as match_id,
+                 m.created_at as matched_at,
+                 c.id as conversation_id,
+                 case when m.user_a = $1 then m.user_b else m.user_a end as partner_id
+          from public.matches m
+          left join public.conversations c on c.match_id = m.id
+          where (m.user_a = $1 or m.user_b = $1)
+            and m.status = 'active'
+          order by m.created_at desc
+        `,
+          [currentUserId]
+        ),
+        client.query(
+          `
+          select to_user, created_at
+          from public.likes
+          where from_user = $1
+          order by created_at desc
+        `,
+          [currentUserId]
+        ),
+        client.query(
+          `
+          select from_user, created_at
+          from public.likes
+          where to_user = $1
+          order by created_at desc
+        `,
+          [currentUserId]
+        ),
+      ]);
+
+      // 2. Collect all unique user IDs and bulk-load in 1 single SQL query
+      const allIds = new Set<string>([currentUserId]);
+      for (const r of matchRes.rows) if (r.partner_id) allIds.add(r.partner_id);
+      for (const r of sentRes.rows) if (r.to_user) allIds.add(r.to_user);
+      for (const r of recvRes.rows) if (r.from_user) allIds.add(r.from_user);
+
+      const usersMap = await fetchCandidateUsersByIds(
+        client,
+        Array.from(allIds)
+      );
+      const viewer = usersMap.get(currentUserId) ?? null;
 
       const partnerConvMap = new Map<string, string>();
       const matches: MatchItem[] = [];
 
       for (const row of matchRes.rows) {
-        const partner = await fetchCandidateUser(client, row.partner_id);
+        const partner = usersMap.get(row.partner_id);
         if (partner) {
-          let convId = row.conversation_id;
-          if (!convId) {
-            const ins = await client.query(
-              `insert into public.conversations (match_id) values ($1) on conflict do nothing returning id`,
-              [row.match_id]
-            );
-            convId = ins.rows[0]?.id;
-            if (!convId) {
-              const fetchConv = await client.query(
-                `select id from public.conversations where match_id = $1`,
-                [row.match_id]
-              );
-              convId = fetchConv.rows[0]?.id;
-            }
-          }
+          const convId = row.conversation_id || null;
           if (convId) {
             partnerConvMap.set(row.partner_id, convId);
           }
@@ -94,20 +125,9 @@ export default async function MatchesPage({ searchParams }: MatchesPageProps) {
         }
       }
 
-      // 2. Fetch Sent Likes ("Lịch sử đã thích")
-      const sentRes = await client.query(
-        `
-        select to_user, created_at
-        from public.likes
-        where from_user = $1
-        order by created_at desc
-      `,
-        [currentUserId]
-      );
-
       const sentLikes: SentLikeItem[] = [];
       for (const row of sentRes.rows) {
-        const target = await fetchCandidateUser(client, row.to_user);
+        const target = usersMap.get(row.to_user);
         if (target) {
           const compatibility = viewer
             ? scorePair(viewer.answers, target.answers)
@@ -126,20 +146,9 @@ export default async function MatchesPage({ searchParams }: MatchesPageProps) {
         }
       }
 
-      // 3. Fetch Received Likes ("Người đã thích bạn")
-      const recvRes = await client.query(
-        `
-        select from_user, created_at
-        from public.likes
-        where to_user = $1
-        order by created_at desc
-      `,
-        [currentUserId]
-      );
-
       const receivedLikes: ReceivedLikeItem[] = [];
       for (const row of recvRes.rows) {
-        const sender = await fetchCandidateUser(client, row.from_user);
+        const sender = usersMap.get(row.from_user);
         if (sender) {
           const compatibility = viewer
             ? scorePair(viewer.answers, sender.answers)

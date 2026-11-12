@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
-import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -91,9 +91,8 @@ export async function GET(request: Request) {
 
         const partnerId =
           conv.user_a === currentUserId ? conv.user_b : conv.user_a;
-        const [partner, viewer, mRes] = await Promise.all([
-          fetchCandidateUser(client, partnerId),
-          fetchCandidateUser(client, currentUserId),
+        const [usersMap, mRes] = await Promise.all([
+          fetchCandidateUsersByIds(client, [partnerId, currentUserId]),
           client.query(
             `
             select id, sender_id, body, created_at
@@ -104,6 +103,8 @@ export async function GET(request: Request) {
             [realConvId]
           ),
         ]);
+        const partner = usersMap.get(partnerId) ?? null;
+        const viewer = usersMap.get(currentUserId) ?? null;
 
         const compatibility =
           viewer && partner ? scorePair(viewer.answers, partner.answers) : null;

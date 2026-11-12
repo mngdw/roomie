@@ -29,9 +29,10 @@ export async function getDbPool(): Promise<pg.Pool> {
       pool = new pg.Pool({
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
-        max: 10,
-        idleTimeoutMillis: 15000,
-        connectionTimeoutMillis: 8000,
+        max: 12,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 4000,
+        keepAlive: true,
       });
     } else {
       pool = new pg.Pool({
@@ -42,9 +43,13 @@ export async function getDbPool(): Promise<pg.Pool> {
         database: DEFAULT_DB_NAME,
         max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
+        connectionTimeoutMillis: 3500,
+        keepAlive: true,
       });
     }
+    pool.on("error", () => {
+      // Prevent unhandled idle client errors from crashing server workers
+    });
   }
   return pool;
 }

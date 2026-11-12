@@ -97,9 +97,13 @@ export function CandidateProfileHeader({
   });
 
   const handleLike = () => {
+    setHasLiked(true);
     startTransition(async () => {
       const res = await likeUserAction(candidate.userId);
-      setHasLiked(true);
+      if (!res.success) {
+        setHasLiked(false);
+        return;
+      }
       if (res.matched) {
         setIsMatched(true);
         if (res.conversationId) setConversationId(res.conversationId);
@@ -110,18 +114,19 @@ export function CandidateProfileHeader({
   };
 
   const handleUnlike = () => {
+    setHasLiked(false);
     startTransition(async () => {
       const res = await unlikeUserAction(candidate.userId);
-      if (res.success) {
-        setHasLiked(false);
+      if (!res.success) {
+        setHasLiked(true);
       }
     });
   };
 
   const handlePass = () => {
+    router.push("/discovery");
     startTransition(async () => {
       await passUserAction(candidate.userId);
-      router.push("/discovery");
     });
   };
 

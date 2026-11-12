@@ -103,13 +103,21 @@ export function DiscoveryView({
     targetName: string,
     score: number
   ): Promise<boolean> => {
+    const optimisticTime = new Date().toISOString();
+    setLikedMap((prev) => {
+      const next = new Map(prev);
+      next.set(targetUserId, optimisticTime);
+      return next;
+    });
+
     const res = await likeUserAction(targetUserId);
-    if (res.success) {
+    if (!res.success) {
       setLikedMap((prev) => {
         const next = new Map(prev);
-        next.set(targetUserId, new Date().toISOString());
+        next.delete(targetUserId);
         return next;
       });
+      return false;
     }
     if (res.matched) {
       setMatchedSet((prev) => {
@@ -133,11 +141,18 @@ export function DiscoveryView({
   };
 
   const handleUnlike = async (targetUserId: string) => {
+    const prevTimestamp = likedMap.get(targetUserId);
+    setLikedMap((prev) => {
+      const next = new Map(prev);
+      next.delete(targetUserId);
+      return next;
+    });
+
     const res = await unlikeUserAction(targetUserId);
-    if (res.success) {
+    if (!res.success && prevTimestamp) {
       setLikedMap((prev) => {
         const next = new Map(prev);
-        next.delete(targetUserId);
+        next.set(targetUserId, prevTimestamp);
         return next;
       });
     }

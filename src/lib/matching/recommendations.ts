@@ -226,6 +226,184 @@ export async function cacheCompatibilityScore(
   );
 }
 
+function mapRowToCandidateUser(row: any): CandidateUser {
+  const dob = new Date(row.date_of_birth);
+  const diffMs = Date.now() - dob.getTime();
+  const age = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
+
+  const isVerified = Boolean(row.is_verified_flag);
+  const roommatePrefs = row.roommate_prefs_json || null;
+  const roomPrefs = row.room_prefs_json || null;
+  const dbRoom = row.room_json || null;
+
+  let room: CandidateUser["room"] = null;
+  if (row.housing_status === "has_room" && dbRoom && dbRoom.id) {
+    const monthlyRent = Number(dbRoom.monthly_rent);
+    const currentOccupants = Number(dbRoom.current_occupants ?? 1);
+    const perPersonRent = monthlyRent / (currentOccupants + 1);
+    room = {
+      id: dbRoom.id,
+      monthlyRent,
+      perPersonRent: Number(perPersonRent),
+      roomType: dbRoom.room_type,
+      districtCode: dbRoom.district_code,
+      cityCode: dbRoom.city_code,
+      availableFrom: formatDate(dbRoom.available_from),
+      facilities: parseArrayField(dbRoom.facilities),
+      currentOccupants,
+      capacityTotal: Number(dbRoom.capacity_total),
+      imagesCount: Number(dbRoom.images_count ?? 0),
+    };
+  }
+
+  const answersMap = new Map<
+    number,
+    { optionValues: number[]; otherText?: string | null }
+  >();
+  const rawAnswers = Array.isArray(row.answers_json) ? row.answers_json : [];
+  for (const ans of rawAnswers) {
+    if (ans && typeof ans.question_number === "number") {
+      answersMap.set(ans.question_number, {
+        optionValues: Array.isArray(ans.option_values)
+          ? ans.option_values.map(Number)
+          : [],
+        otherText: ans.other_text ?? null,
+      });
+    }
+  }
+
+  const acceptedGenders = parseArrayField<"male" | "female" | "other">(
+    roommatePrefs?.accepted_genders
+  );
+
+  return {
+    userId: row.user_id,
+    displayName: row.display_name,
+    age,
+    gender: row.gender,
+    housingStatus: row.housing_status,
+    isVerified,
+    avatarPath: row.avatar_path,
+    bio: row.bio,
+    occupation: row.occupation,
+    schoolOrWorkplace: row.school_or_workplace,
+    cityCode: row.city_code,
+    districtCode: row.district_code,
+    email: row.auth_email || row.email || null,
+    phone: row.phone || null,
+    zalo: row.zalo || null,
+    facebook: row.facebook || null,
+    isSmoker: row.is_smoker,
+    createdAt: row.created_at,
+    room,
+    roommatePreferences: roommatePrefs
+      ? {
+          acceptedGenders:
+            acceptedGenders.length > 0
+              ? acceptedGenders
+              : ["male", "female", "other"],
+          ageMin: roommatePrefs.age_min,
+          ageMax: roommatePrefs.age_max,
+          ageIsDealbreaker: roommatePrefs.age_is_dealbreaker ?? false,
+          smokingPolicy: roommatePrefs.smoking_policy ?? "any",
+          requirementTags: parseArrayField(roommatePrefs.requirement_tags),
+        }
+      : null,
+    roomPreferences: roomPrefs
+      ? {
+          preferredDistrictCodes: parseArrayField(
+            roomPrefs.preferred_district_codes
+          ),
+          budgetMin: roomPrefs.budget_min ? Number(roomPrefs.budget_min) : null,
+          budgetMax: Number(roomPrefs.budget_max),
+          roomTypes: parseArrayField<"private" | "shared">(roomPrefs.room_types),
+          moveInDate: formatDate(roomPrefs.move_in_date),
+          moveInFlexDays: roomPrefs.move_in_flex_days ?? 30,
+          mustHaveFacilities: parseArrayField(roomPrefs.must_have_facilities),
+          requireMedia: roomPrefs.require_media ?? false,
+        }
+      : null,
+    answers: answersMap,
+  };
+}
+
+/**
+ * Bulk-loads multiple CandidateUser domain objects in a SINGLE SQL query
+ * to eliminate N+1 database round-trips.
+ */
+export async function fetchCandidateUsersByIds(
+  client: SupabaseClient<Database> | any,
+  userIds: string[]
+): Promise<Map<string, CandidateUser>> {
+  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+  const resultMap = new Map<string, CandidateUser>();
+  if (uniqueIds.length === 0) return resultMap;
+
+  if (isPgClient(client)) {
+    const res = await client.query(
+      `
+      select
+        p.*,
+        u.email as auth_email,
+        (
+          p.verification_status = 'verified'
+          or exists (
+            select 1 from public.verification_records vr
+            where vr.user_id = p.user_id and vr.status = 'verified'
+          )
+        ) as is_verified_flag,
+        to_jsonb(rmp) as roommate_prefs_json,
+        to_jsonb(rp) as room_prefs_json,
+        to_jsonb(rm) as room_json,
+        coalesce(
+          (
+            select jsonb_agg(
+              jsonb_build_object(
+                'question_number', q.number,
+                'option_values', a.option_values,
+                'other_text', a.other_text
+              )
+            )
+            from public.user_answers a
+            join public.questions q on q.id = a.question_id
+            where a.user_id = p.user_id
+          ),
+          '[]'::jsonb
+        ) as answers_json
+      from public.profiles p
+      left join auth.users u on u.id = p.user_id
+      left join public.roommate_preferences rmp on rmp.user_id = p.user_id
+      left join public.room_preferences rp on rp.user_id = p.user_id
+      left join lateral (
+        select r.id, r.monthly_rent, r.room_type, r.district_code, r.city_code,
+               r.available_from, r.facilities, r.current_occupants, r.capacity_total,
+               (select count(*)::int from public.room_images i where i.room_id = r.id) as images_count
+        from public.rooms r
+        where r.owner_id = p.user_id and r.is_published
+        limit 1
+      ) rm on p.housing_status = 'has_room'
+      where p.user_id = any($1::uuid[])
+    `,
+      [uniqueIds]
+    );
+
+    for (const row of res.rows) {
+      const candidate = mapRowToCandidateUser(row);
+      resultMap.set(candidate.userId, candidate);
+    }
+    return resultMap;
+  }
+
+  // Fallback for Supabase JS client
+  const loaded = await Promise.all(
+    uniqueIds.map((id) => fetchCandidateUser(client, id))
+  );
+  for (const c of loaded) {
+    if (c) resultMap.set(c.userId, c);
+  }
+  return resultMap;
+}
+
 /**
  * Converts DB rows for a single user into a CandidateUser domain object.
  */
@@ -233,146 +411,10 @@ export async function fetchCandidateUser(
   client: SupabaseClient<Database> | any,
   userId: string
 ): Promise<CandidateUser | null> {
+  if (!userId) return null;
   if (isPgClient(client)) {
-    // 1. Profile & Account Contact Info
-    const pRes = await client.query(
-      `select p.*, u.email
-       from public.profiles p
-       left join auth.users u on u.id = p.user_id
-       where p.user_id = $1`,
-      [userId]
-    );
-    const profile = pRes.rows[0];
-    if (!profile) return null;
-
-    const dob = new Date(profile.date_of_birth);
-    const diffMs = Date.now() - dob.getTime();
-    const age = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
-
-    // 2. Verification
-    const vRes = await client.query(
-      "select status from public.verification_records where user_id = $1 order by created_at desc limit 1",
-      [userId]
-    );
-    const isVerified = vRes.rows[0]?.status === "verified";
-
-    // 3. Roommate preferences
-    const rmpRes = await client.query(
-      "select * from public.roommate_preferences where user_id = $1",
-      [userId]
-    );
-    const roommatePrefs = rmpRes.rows[0];
-
-    // 4. Room preferences
-    const rpRes = await client.query(
-      "select * from public.room_preferences where user_id = $1",
-      [userId]
-    );
-    const roomPrefs = rpRes.rows[0];
-
-    // 5. Room
-    let room: CandidateUser["room"] = null;
-    if (profile.housing_status === "has_room") {
-      const rmRes = await client.query(
-        `select r.*, (select count(*)::int from public.room_images i where i.room_id = r.id) as images_count
-         from public.rooms r
-         where r.owner_id = $1 and r.is_published
-         limit 1`,
-        [userId]
-      );
-      const dbRoom = rmRes.rows[0];
-      if (dbRoom) {
-        const perPersonRent =
-          dbRoom.monthly_rent / (dbRoom.current_occupants + 1);
-        room = {
-          id: dbRoom.id,
-          monthlyRent: Number(dbRoom.monthly_rent),
-          perPersonRent: Number(perPersonRent),
-          roomType: dbRoom.room_type,
-          districtCode: dbRoom.district_code,
-          cityCode: dbRoom.city_code,
-          availableFrom: formatDate(dbRoom.available_from),
-          facilities: parseArrayField(dbRoom.facilities),
-          currentOccupants: Number(dbRoom.current_occupants),
-          capacityTotal: Number(dbRoom.capacity_total),
-          imagesCount: Number(dbRoom.images_count ?? 0),
-        };
-      }
-    }
-
-    // 6. Answers
-    const ansRes = await client.query(
-      `select a.option_values, a.other_text, q.number as question_number
-       from public.user_answers a
-       join public.questions q on q.id = a.question_id
-       where a.user_id = $1`,
-      [userId]
-    );
-
-    const answersMap = new Map<
-      number,
-      { optionValues: number[]; otherText?: string | null }
-    >();
-    for (const row of ansRes.rows) {
-      answersMap.set(row.question_number, {
-        optionValues: row.option_values ?? [],
-        otherText: row.other_text,
-      });
-    }
-
-    const acceptedGenders = parseArrayField<"male" | "female" | "other">(
-      roommatePrefs?.accepted_genders
-    );
-
-    return {
-      userId: profile.user_id,
-      displayName: profile.display_name,
-      age,
-      gender: profile.gender,
-      housingStatus: profile.housing_status,
-      isVerified,
-      avatarPath: profile.avatar_path,
-      bio: profile.bio,
-      occupation: profile.occupation,
-      schoolOrWorkplace: profile.school_or_workplace,
-      cityCode: profile.city_code,
-      districtCode: profile.district_code,
-      email: profile.email || null,
-      phone: profile.phone || null,
-      zalo: profile.zalo || null,
-      facebook: profile.facebook || null,
-      isSmoker: profile.is_smoker,
-      createdAt: profile.created_at,
-      room,
-      roommatePreferences: roommatePrefs
-        ? {
-            acceptedGenders:
-              acceptedGenders.length > 0
-                ? acceptedGenders
-                : ["male", "female", "other"],
-            ageMin: roommatePrefs.age_min,
-            ageMax: roommatePrefs.age_max,
-            ageIsDealbreaker: roommatePrefs.age_is_dealbreaker ?? false,
-            smokingPolicy: roommatePrefs.smoking_policy ?? "any",
-            requirementTags: parseArrayField(roommatePrefs.requirement_tags),
-          }
-        : null,
-      roomPreferences: roomPrefs
-        ? {
-            preferredDistrictCodes: parseArrayField(
-              roomPrefs.preferred_district_codes
-            ),
-            budgetMin: roomPrefs.budget_min ? Number(roomPrefs.budget_min) : null,
-            budgetMax: Number(roomPrefs.budget_max),
-            roomTypes: parseArrayField<"private" | "shared">(roomPrefs.room_types),
-            moveInDate: formatDate(roomPrefs.move_in_date),
-            moveInFlexDays: roomPrefs.move_in_flex_days ?? 30,
-            mustHaveFacilities: parseArrayField(roomPrefs.must_have_facilities),
-            requireMedia: roomPrefs.require_media ?? false,
-          }
-        : null,
-      answers: answersMap,
-    };
+    const map = await fetchCandidateUsersByIds(client, [userId]);
+    return map.get(userId) ?? null;
   }
 
   // Fetch profile via Supabase
@@ -515,10 +557,9 @@ export async function fetchCandidateUser(
 
 /**
  * End-to-end database recommendation pipeline:
- * 1. Fetches viewer profile and answers.
- * 2. Fetches eligible candidate IDs using DB RPC fn_eligible_candidates.
- * 3. Loads candidate domain objects.
- * 4. Executes deterministic scoring, explanation, ranking, and pagination.
+ * 1. Fetches eligible candidate IDs using DB RPC fn_eligible_candidates.
+ * 2. Bulk-loads viewer + candidate domain objects in 1 SQL query.
+ * 3. Executes deterministic scoring, explanation, ranking, and pagination.
  */
 export async function getRecommendedRoommates(
   client: SupabaseClient<Database> | any,
@@ -526,11 +567,6 @@ export async function getRecommendedRoommates(
   filters?: RecommendationFilters,
   pagination?: PaginationOptions
 ): Promise<PaginatedRecommendations> {
-  const viewer = await fetchCandidateUser(client, viewerId);
-  if (!viewer) {
-    throw new Error(`Viewer with ID ${viewerId} not found.`);
-  }
-
   let ids: string[] = [];
   if (isPgClient(client)) {
     const candRes = await client.query(
@@ -551,6 +587,12 @@ export async function getRecommendedRoommates(
     ids = (candidateIds as unknown as string[]) ?? [];
   }
 
+  const usersMap = await fetchCandidateUsersByIds(client, [viewerId, ...ids]);
+  const viewer = usersMap.get(viewerId);
+  if (!viewer) {
+    throw new Error(`Viewer with ID ${viewerId} not found.`);
+  }
+
   if (ids.length === 0) {
     return {
       items: [],
@@ -561,10 +603,9 @@ export async function getRecommendedRoommates(
     };
   }
 
-  // Load candidate users
   const candidates: CandidateUser[] = [];
   for (const id of ids) {
-    const candidate = await fetchCandidateUser(client, id);
+    const candidate = usersMap.get(id);
     if (candidate) {
       candidates.push(candidate);
     }
@@ -581,18 +622,110 @@ export interface DiscoveryFeedData {
 
 /**
  * Loads both top high-compatibility recommendations AND the broader candidate pool
- * for the "Khám phá tiếp" (Explore further) flow.
+ * for the "Khám phá tiếp" (Explore further) flow in just 2 fast SQL queries.
  */
 export async function getDiscoveryFeed(
   client: SupabaseClient<Database> | any,
   viewerId: string
 ): Promise<DiscoveryFeedData> {
+  if (isPgClient(client)) {
+    // 1. Fetch all active/completed profile IDs + viewer's passed user IDs in 1 query
+    const metaRes = await client.query(
+      `
+      select
+        array(
+          select p.user_id
+          from public.profiles p
+          where p.user_id = $1
+             or p.completed_at is not null
+             or exists (select 1 from public.user_answers ua where ua.user_id = p.user_id)
+          order by p.created_at asc
+        ) as all_user_ids,
+        array(
+          select ps.to_user
+          from public.passes ps
+          where ps.from_user = $1
+        ) as passed_user_ids
+    `,
+      [viewerId]
+    );
+
+    const allUserIds: string[] = metaRes.rows[0]?.all_user_ids ?? [viewerId];
+    const passedSet = new Set<string>(metaRes.rows[0]?.passed_user_ids ?? []);
+
+    // 2. Bulk-load viewer + all candidates in 1 single SQL query
+    const usersMap = await fetchCandidateUsersByIds(client, allUserIds);
+    const viewer = usersMap.get(viewerId);
+    if (!viewer) {
+      throw new Error(`Viewer with ID ${viewerId} not found.`);
+    }
+
+    const unpassedCandidates: CandidateUser[] = [];
+    const allCandidates: RecommendationResult[] = [];
+
+    for (const id of allUserIds) {
+      if (id === viewerId) continue;
+      const candidate = usersMap.get(id);
+      if (!candidate) continue;
+
+      if (!passedSet.has(id)) {
+        unpassedCandidates.push(candidate);
+      }
+
+      const compatibility = scorePair(viewer.answers, candidate.answers);
+      const explanation = generateCompatibilityExplanation(
+        viewer,
+        candidate,
+        compatibility
+      );
+      const housingFit = evaluateHousingFit(viewer, candidate);
+
+      allCandidates.push({
+        candidate,
+        compatibility,
+        explanation,
+        housingFit,
+        isEligible: true,
+        ineligibilityReasons: [],
+      });
+    }
+
+    // Sort allCandidates by compatibility score descending
+    allCandidates.sort(
+      (a, b) => b.compatibility.finalScore - a.compatibility.finalScore
+    );
+
+    // Compute strict hard-filtered topRecommendations in memory (0 extra DB queries!)
+    const rankedEligible = rankCandidates(viewer, unpassedCandidates);
+    const topRecommendations = [...rankedEligible.items];
+
+    // Ensure topRecommendations has at least top 4 matches with highest compatibility scores
+    const topIds = new Set(topRecommendations.map((r) => r.candidate.userId));
+    if (topRecommendations.length < 4 && allCandidates.length > 0) {
+      for (const cand of allCandidates) {
+        if (
+          !topIds.has(cand.candidate.userId) &&
+          !passedSet.has(cand.candidate.userId)
+        ) {
+          topRecommendations.push(cand);
+          topIds.add(cand.candidate.userId);
+          if (topRecommendations.length >= 4) break;
+        }
+      }
+    }
+
+    return {
+      topRecommendations,
+      allCandidates,
+    };
+  }
+
+  // Fallback for non-pg client
   const viewer = await fetchCandidateUser(client, viewerId);
   if (!viewer) {
     throw new Error(`Viewer with ID ${viewerId} not found.`);
   }
 
-  // 1. Fetch eligible top recommendations
   let topRecommendations: RecommendationResult[] = [];
   try {
     const recs = await getRecommendedRoommates(client, viewerId);
@@ -601,30 +734,17 @@ export async function getDiscoveryFeed(
     console.warn("Could not get RPC recommendations, using pure scoring fallback", err);
   }
 
-  // 2. Fetch all other candidate profiles from DB
-  let candidateIds: string[] = [];
-  if (isPgClient(client)) {
-    const res = await client.query(
-      `select user_id from public.profiles
-       where user_id != $1
-         and (completed_at is not null or (select count(*) from public.user_answers where user_id = profiles.user_id) > 0)
-       order by created_at asc`,
-      [viewerId]
-    );
-    candidateIds = res.rows.map((r: any) => r.user_id);
-  } else {
-    const { data: res } = await client
-      .from("profiles")
-      .select("user_id")
-      .neq("user_id", viewerId)
-      .not("completed_at", "is", null);
-    candidateIds = (res || []).map((r: any) => r.user_id);
-  }
+  const { data: res } = await client
+    .from("profiles")
+    .select("user_id")
+    .neq("user_id", viewerId)
+    .not("completed_at", "is", null);
+  const candidateIds = (res || []).map((r: any) => r.user_id);
 
-  // 3. Load all candidates and score them against the viewer
+  const usersMap = await fetchCandidateUsersByIds(client, candidateIds);
   const allCandidates: RecommendationResult[] = [];
   for (const id of candidateIds) {
-    const candidate = await fetchCandidateUser(client, id);
+    const candidate = usersMap.get(id);
     if (!candidate) continue;
 
     const compatibility = scorePair(viewer.answers, candidate.answers);
@@ -645,12 +765,10 @@ export async function getDiscoveryFeed(
     });
   }
 
-  // Sort all candidates by compatibility score descending
   allCandidates.sort(
     (a, b) => b.compatibility.finalScore - a.compatibility.finalScore
   );
 
-  // Ensure top recommendations has at least top 3-4 matches with highest compatibility scores
   const topIds = new Set(topRecommendations.map((r) => r.candidate.userId));
   if (topRecommendations.length < 4 && allCandidates.length > 0) {
     for (const cand of allCandidates) {

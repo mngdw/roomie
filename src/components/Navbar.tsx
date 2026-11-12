@@ -18,10 +18,8 @@ import {
   Bell,
   ShieldCheck,
   Edit3,
-  MessageCircle,
   UserPlus,
   LogIn,
-  FlaskConical,
 } from "lucide-react";
 import { DEMO_USERS } from "@/lib/constants/demo-users";
 import { markNotificationsReadAction, signOutAction } from "@/app/actions";
@@ -56,10 +54,19 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
   const [isPending, startTransition] = useTransition();
 
   const [matchCount, setMatchCount] = useState<number>(0);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
-  // Load notifications and conversations count
+  // Clear pendingHref as soon as route transition finishes
   useEffect(() => {
-    if (currentUser?.id) {
+    setPendingHref(null);
+  }, [pathname]);
+
+  // Load notifications and conversations count without blocking route transitions
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const fetchHeaderCounts = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetch("/api/notifications")
         .then((r) => r.json())
         .then((d) => {
@@ -77,8 +84,12 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
           }
         })
         .catch(() => {});
-    }
-  }, [currentUser?.id, pathname]);
+    };
+
+    fetchHeaderCounts();
+    const interval = setInterval(fetchHeaderCounts, 20000);
+    return () => clearInterval(interval);
+  }, [currentUser?.id]);
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
@@ -86,10 +97,10 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
     const nextState = !notifOpen;
     setNotifOpen(nextState);
     if (nextState && unreadCount > 0) {
-      await markNotificationsReadAction();
       setNotifications((prev) =>
         prev.map((n) => ({ ...n, read_at: new Date().toISOString() }))
       );
+      await markNotificationsReadAction();
     }
   };
 
@@ -126,6 +137,8 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
         ]),
   ];
 
+  const activePath = pendingHref || pathname;
+
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -148,11 +161,14 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
             {navLinks.map((item) => {
               const Icon = item.icon;
               const isActive =
-                pathname === item.href || pathname.startsWith(item.href + "/");
+                activePath === item.href || activePath.startsWith(item.href + "/");
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={() => {
+                    if (pathname !== item.href) setPendingHref(item.href);
+                  }}
                   className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
                     isActive
                       ? "text-blue-600 bg-blue-50 font-semibold"
@@ -394,7 +410,6 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
                         <span>Khảo sát lại Onboarding</span>
                       </Link>
 
-
                       <button
                         onClick={async () => {
                           setDropdownOpen(false);
@@ -441,11 +456,14 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
         {navLinks.map((item) => {
           const Icon = item.icon;
           const isActive =
-            pathname === item.href || pathname.startsWith(item.href + "/");
+            activePath === item.href || activePath.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => {
+                if (pathname !== item.href) setPendingHref(item.href);
+              }}
               className={`relative flex flex-col items-center py-1 px-2 rounded-lg text-[10px] font-medium transition-colors ${
                 isActive ? "text-blue-600 font-semibold" : "text-slate-500"
               }`}
@@ -463,6 +481,13 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
           );
         })}
       </div>
+
+      {/* Top Instant Route Progress Indicator */}
+      {(pendingHref || isPending) && (
+        <div className="h-0.5 w-full bg-blue-100 overflow-hidden">
+          <div className="h-full w-1/2 bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600 animate-pulse rounded-full" />
+        </div>
+      )}
     </header>
   );
 }

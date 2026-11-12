@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
-import { fetchCandidateUser } from "@/lib/matching/recommendations";
+import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -40,9 +40,14 @@ export default async function CompatibilityPage({
 
   try {
     const dbRes = await withAdminDb(async (client) => {
-      const c = await fetchCandidateUser(client, id);
-      const v = await fetchCandidateUser(client, currentUserId);
-      return { candidate: c, viewer: v };
+      const usersMap = await fetchCandidateUsersByIds(client, [
+        id,
+        currentUserId,
+      ]);
+      return {
+        candidate: usersMap.get(id) ?? null,
+        viewer: usersMap.get(currentUserId) ?? null,
+      };
     });
     candidate = dbRes.candidate;
     viewer = dbRes.viewer;
@@ -71,9 +76,11 @@ export default async function CompatibilityPage({
     compatibility
   );
 
-  // Fetch private evaluation note for this candidate
-  const existingNote = await getCandidateNoteAction(id);
-  const relationship = currentUserId ? await getRelationshipStatusAction(id) : undefined;
+  // Fetch private evaluation note & relationship status in parallel
+  const [existingNote, relationship] = await Promise.all([
+    getCandidateNoteAction(id),
+    currentUserId ? getRelationshipStatusAction(id) : Promise.resolve(undefined),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50">

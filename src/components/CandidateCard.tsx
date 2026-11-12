@@ -56,31 +56,46 @@ export function CandidateCard({
   if (isRemoved) return null;
 
   const handleLike = () => {
+    // Instant 0ms optimistic update
+    setIsLiked(true);
     startTransition(async () => {
-      const matched = await onLike(
-        candidate.userId,
-        candidate.displayName,
-        compatibility.finalScore
-      );
-      setIsLiked(true);
-      if (matched) {
-        setIsMatched(true);
+      try {
+        const matched = await onLike(
+          candidate.userId,
+          candidate.displayName,
+          compatibility.finalScore
+        );
+        if (matched) {
+          setIsMatched(true);
+        }
+      } catch {
+        setIsLiked(false);
       }
     });
   };
 
   const handleUnlike = () => {
     if (!onUnlike) return;
+    // Instant 0ms optimistic update
+    setIsLiked(false);
     startTransition(async () => {
-      await onUnlike(candidate.userId);
-      setIsLiked(false);
+      try {
+        await onUnlike(candidate.userId);
+      } catch {
+        setIsLiked(true);
+      }
     });
   };
 
   const handlePass = () => {
+    // Instant 0ms optimistic removal
+    setIsRemoved(true);
     startTransition(async () => {
-      await onPass(candidate.userId);
-      setIsRemoved(true);
+      try {
+        await onPass(candidate.userId);
+      } catch {
+        setIsRemoved(false);
+      }
     });
   };
 

@@ -2,6 +2,7 @@
  * ROOMIE · User Session & Demo Persona Management
  * Handles session cookies and provides seamless switching between demo personas.
  */
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { withAdminDb } from "./db";
 import { DEMO_USERS, DEFAULT_USER_ID } from "@/lib/constants/demo-users";
@@ -11,13 +12,13 @@ export const SESSION_COOKIE_NAME = "roomie_user_id";
 export { DEMO_USERS, DEFAULT_USER_ID };
 
 /**
- * Returns the current authenticated or demo user ID.
+ * Returns the current authenticated or demo user ID (deduplicated per request via React.cache).
  */
-export async function getCurrentUserId(): Promise<string | null> {
+export const getCurrentUserId = cache(async (): Promise<string | null> => {
   const cookieStore = await cookies();
   const userIdCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   return userIdCookie || null;
-}
+});
 
 /**
  * Sets the current user ID in the session cookie.
@@ -59,9 +60,9 @@ export interface UserSummary {
 
 /**
  * Loads the current user's profile and questionnaire completion status.
- * Automatically falls back to built-in seed persona if the database is paused or unreachable.
+ * Automatically deduplicated per request via React.cache and falls back to seed persona if DB is unreachable.
  */
-export async function getCurrentUser(): Promise<UserSummary | null> {
+export const getCurrentUser = cache(async (): Promise<UserSummary | null> => {
   const userId = await getCurrentUserId();
   if (!userId) {
     return null;
@@ -104,4 +105,4 @@ export async function getCurrentUser(): Promise<UserSummary | null> {
     console.warn("getCurrentUser DB fallback active:", (err as Error).message);
     return getFallbackUserSummary(userId);
   }
-}
+});
