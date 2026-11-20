@@ -1,14 +1,17 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
 import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
+import { SessionRestoreGuard } from "@/components/SessionRestoreGuard";
 import { EditProfileClient } from "./EditProfileClient";
+
+export const dynamic = "force-dynamic";
 
 export default async function EditProfilePage() {
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
-    redirect("/login");
+    return <SessionRestoreGuard />;
   }
 
   let user = null;

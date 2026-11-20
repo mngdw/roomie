@@ -1,8 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentUserId, setCurrentUserId, clearSession, DEFAULT_USER_ID } from "@/lib/server/session";
+import {
+  getCurrentUserId,
+  setCurrentUserId,
+  clearSession,
+  invalidateUserSummaryCache,
+  primeUserSummaryCache,
+  DEFAULT_USER_ID,
+} from "@/lib/server/session";
 import { withSessionDb, withAdminDb } from "@/lib/server/db";
+import { invalidateCandidateCache } from "@/lib/matching/recommendations";
 import { QUESTIONNAIRE_QUESTIONS } from "@/lib/questionnaire/catalog.generated";
 import {
   FALLBACK_CANDIDATES_MAP,
@@ -488,6 +496,7 @@ export async function unlikeUserAction(
  */
 export async function switchUserAction(userId: string): Promise<void> {
   await setCurrentUserId(userId);
+  invalidateUserSummaryCache(userId);
   revalidatePath("/", "layout");
 }
 
@@ -779,6 +788,9 @@ export async function saveOnboardingAction(
       }
     });
 
+    invalidateUserSummaryCache(currentUserId);
+    invalidateCandidateCache(currentUserId);
+
     try {
       revalidatePath("/", "layout");
       revalidatePath("/discovery");
@@ -789,6 +801,8 @@ export async function saveOnboardingAction(
     return { success: true };
   } catch (err) {
     console.warn("saveOnboardingAction DB fallback active:", (err as Error).message);
+    invalidateUserSummaryCache(currentUserId);
+    invalidateCandidateCache(currentUserId);
     const fbUser = getFallbackCandidateUser(currentUserId);
     if (fbUser) {
       fbUser.displayName = data.displayName || fbUser.displayName;
@@ -907,6 +921,9 @@ export async function updateProfileAction(
       }
     });
 
+    invalidateUserSummaryCache(currentUserId);
+    invalidateCandidateCache(currentUserId);
+
     try {
       revalidatePath("/profile");
       revalidatePath("/profile/edit");
@@ -916,6 +933,8 @@ export async function updateProfileAction(
     return { success: true };
   } catch (err) {
     console.warn("updateProfileAction DB fallback active:", (err as Error).message);
+    invalidateUserSummaryCache(currentUserId);
+    invalidateCandidateCache(currentUserId);
     const fbUser = getFallbackCandidateUser(currentUserId);
     if (fbUser) {
       fbUser.displayName = data.displayName || fbUser.displayName;
@@ -1109,11 +1128,15 @@ export async function submitVerificationAction(
       );
     });
 
+    invalidateUserSummaryCache(currentUserId);
+    invalidateCandidateCache(currentUserId);
     revalidatePath("/profile");
     revalidatePath("/discovery");
     return { success: true };
   } catch (err) {
     console.warn("submitVerificationAction DB fallback active:", (err as Error).message);
+    invalidateUserSummaryCache(currentUserId);
+    invalidateCandidateCache(currentUserId);
     const fbUser = getFallbackCandidateUser(currentUserId);
     if (fbUser) {
       fbUser.isVerified = true;
@@ -1217,7 +1240,8 @@ export async function signUpAction(data: {
     });
 
     await setCurrentUserId(userId);
-    revalidatePath("/", "layout");
+    invalidateUserSummaryCache(userId);
+    invalidateCandidateCache(userId);
     return { success: true, userId };
   } catch (err) {
     const msg = (err as Error).message || "";
@@ -1239,9 +1263,8 @@ export async function signUpAction(data: {
     });
 
     await setCurrentUserId(newId);
-    try {
-      revalidatePath("/", "layout");
-    } catch {}
+    invalidateUserSummaryCache(newId);
+    invalidateCandidateCache(newId);
     return { success: true, userId: newId };
   }
 }
@@ -1270,24 +1293,47 @@ export async function signInAction(data: {
 
   try {
     const user = await withAdminDb(async (client) => {
-      // 1. Try real password check in auth.users
+      // 1. Fast single-query password check + profile summary load
       const res = await client.query(
         `
         select u.id, u.email,
-               (select count(*)::int from public.user_answers a where a.user_id = u.id) as ans_count,
-               (select completed_at from public.profiles p where p.user_id = u.id) as comp_at
+               p.display_name, p.full_name, p.gender, p.housing_status,
+               p.completed_at, p.verification_status, p.avatar_path,
+               p.bio, p.occupation, p.school_or_workplace, p.city_code, p.district_code,
+               (select count(*)::int from public.user_answers a where a.user_id = u.id) as ans_count
         from auth.users u
-        where lower(u.email) = $1
+        left join public.profiles p on p.user_id = u.id
+        where (u.email = $1 or lower(u.email) = $1)
           and u.encrypted_password = extensions.crypt($2, u.encrypted_password)
+        limit 1
       `,
         [cleanEmail, cleanPass]
       );
 
       if (res.rows.length > 0) {
         const row = res.rows[0];
+        const isCompleted = row.completed_at !== null && Number(row.ans_count ?? 0) >= 30;
+        if (row.display_name) {
+          primeUserSummaryCache({
+            id: row.id,
+            displayName: row.display_name,
+            fullName: row.full_name || row.display_name,
+            gender: row.gender || "female",
+            housingStatus: row.housing_status || "looking_for_room",
+            isCompleted,
+            answeredCount: Number(row.ans_count ?? 0),
+            isVerified: row.verification_status === "verified",
+            avatarPath: row.avatar_path || null,
+            bio: row.bio || null,
+            occupation: row.occupation || null,
+            schoolOrWorkplace: row.school_or_workplace || null,
+            cityCode: row.city_code || "hn",
+            districtCode: row.district_code || null,
+          });
+        }
         return {
           id: row.id,
-          isCompleted: row.comp_at !== null && row.ans_count >= 30,
+          isCompleted,
         };
       }
 
@@ -1307,15 +1353,11 @@ export async function signInAction(data: {
     }
 
     await setCurrentUserId(user.id);
-    revalidatePath("/", "layout");
     return { success: true, userId: user.id, isCompleted: user.isCompleted };
   } catch (err) {
     console.warn("signInAction DB fallback active:", (err as Error).message);
     if (demoMatch) {
       await setCurrentUserId(demoMatch.id);
-      try {
-        revalidatePath("/", "layout");
-      } catch {}
       return { success: true, userId: demoMatch.id, isCompleted: true };
     }
 
@@ -1326,9 +1368,6 @@ export async function signInAction(data: {
     const targetId = fbCandidate ? fbCandidate.userId : DEFAULT_USER_ID;
 
     await setCurrentUserId(targetId);
-    try {
-      revalidatePath("/", "layout");
-    } catch {}
     return { success: true, userId: targetId, isCompleted: true };
   }
 }
@@ -1338,6 +1377,7 @@ export async function signInAction(data: {
  */
 export async function signOutAction(): Promise<void> {
   await clearSession();
+  invalidateUserSummaryCache();
   revalidatePath("/", "layout");
 }
 

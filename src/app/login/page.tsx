@@ -1,17 +1,34 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Home, LogIn, AlertCircle } from "lucide-react";
+import { Home, LogIn, AlertCircle, Loader2 } from "lucide-react";
 import { signInAction } from "@/app/actions";
+import {
+  syncClientSession,
+  getSavedClientUserId,
+} from "@/components/SessionRestoreGuard";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // If the user is already logged in (e.g. session cookie or active user in localStorage),
+  // restore the cookie and redirect straight to /discovery so they never have to log in again.
+  useEffect(() => {
+    const existingId = getSavedClientUserId();
+    if (existingId) {
+      setIsRedirecting(true);
+      syncClientSession(existingId);
+      router.replace("/discovery");
+      router.refresh();
+    }
+  }, [router]);
 
   const handleStandardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,15 +39,18 @@ export default function LoginPage() {
       if (!res.success) {
         setError(res.error || "Đăng nhập không thành công");
       } else {
-        if (res.isCompleted) {
-          router.push("/discovery");
-        } else {
-          router.push("/onboarding");
+        setIsRedirecting(true);
+        if (res.userId) {
+          syncClientSession(res.userId);
         }
+        const targetUrl = res.isCompleted ? "/discovery" : "/onboarding";
+        router.replace(targetUrl);
         router.refresh();
       }
     });
   };
+
+  const busy = isPending || isRedirecting;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -70,7 +90,8 @@ export default function LoginPage() {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={busy}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               />
             </div>
 
@@ -84,17 +105,28 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={busy}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               />
             </div>
 
             <button
               type="submit"
-              disabled={isPending}
-              className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={busy}
+              className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <LogIn className="w-4 h-4" />
-              <span>{isPending ? "Đang đăng nhập..." : "Đăng nhập"}</span>
+              {busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <LogIn className="w-4 h-4" />
+              )}
+              <span>
+                {isRedirecting
+                  ? "Đang vào ứng dụng..."
+                  : isPending
+                  ? "Đang xác thực..."
+                  : "Đăng nhập"}
+              </span>
             </button>
           </form>
 

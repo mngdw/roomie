@@ -1,7 +1,8 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
+import { SessionRestoreGuard } from "@/components/SessionRestoreGuard";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -11,6 +12,8 @@ import {
 import { scorePair } from "@/lib/matching/scoring";
 import { ChatClient } from "./ChatClient";
 
+export const dynamic = "force-dynamic";
+
 interface ChatPageProps {
   params: Promise<{ id: string }>;
 }
@@ -19,7 +22,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
   const { id: paramId } = await params;
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
-    redirect("/login");
+    return <SessionRestoreGuard />;
   }
 
   let conversationData: {

@@ -3,8 +3,9 @@
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Home, UserPlus, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Home, UserPlus, AlertCircle, Loader2 } from "lucide-react";
 import { signUpAction } from "@/app/actions";
+import { syncClientSession } from "@/components/SessionRestoreGuard";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -23,11 +25,17 @@ export default function SignupPage() {
       if (!res.success) {
         setError(res.error || "Đăng ký không thành công");
       } else {
-        router.push("/onboarding");
+        setIsRedirecting(true);
+        if (res.userId) {
+          syncClientSession(res.userId);
+        }
+        router.replace("/onboarding");
         router.refresh();
       }
     });
   };
+
+  const busy = isPending || isRedirecting;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -66,7 +74,8 @@ export default function SignupPage() {
                 placeholder="Ví dụ: Nguyễn Minh Anh"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={busy}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               />
             </div>
 
@@ -80,7 +89,8 @@ export default function SignupPage() {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={busy}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               />
             </div>
 
@@ -94,7 +104,8 @@ export default function SignupPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={busy}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
               />
             </div>
 
@@ -104,11 +115,21 @@ export default function SignupPage() {
 
             <button
               type="submit"
-              disabled={isPending}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              disabled={busy}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <UserPlus className="w-4 h-4" />
-              <span>{isPending ? "Đang tạo tài khoản..." : "Đăng ký & Vào Onboarding (6 bước)"}</span>
+              {busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <UserPlus className="w-4 h-4" />
+              )}
+              <span>
+                {isRedirecting
+                  ? "Đang mở Onboarding..."
+                  : isPending
+                  ? "Đang tạo tài khoản..."
+                  : "Đăng ký & Vào Onboarding (6 bước)"}
+              </span>
             </button>
           </form>
 

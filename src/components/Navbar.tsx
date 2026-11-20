@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { DEMO_USERS } from "@/lib/constants/demo-users";
 import { markNotificationsReadAction, signOutAction } from "@/app/actions";
+import { syncClientSession } from "@/components/SessionRestoreGuard";
 
 interface NavbarProps {
   currentUser: {
@@ -60,6 +61,13 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
+
+  // Synchronize active session into client cookie & localStorage so tab switches never lose auth
+  useEffect(() => {
+    if (currentUser?.id) {
+      syncClientSession(currentUser.id);
+    }
+  }, [currentUser?.id]);
 
   // Load notifications and conversations count without blocking route transitions
   useEffect(() => {
@@ -106,6 +114,7 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
 
   const handleSelectUser = async (userId: string) => {
     setDropdownOpen(false);
+    syncClientSession(userId);
     startTransition(async () => {
       if (onSwitchUser) {
         await onSwitchUser(userId);
@@ -413,6 +422,7 @@ export function Navbar({ currentUser, onSwitchUser }: NavbarProps) {
                       <button
                         onClick={async () => {
                           setDropdownOpen(false);
+                          syncClientSession(null);
                           await signOutAction();
                           router.push("/login");
                           router.refresh();

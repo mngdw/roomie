@@ -24,6 +24,26 @@ import { ALGORITHM_VERSION } from "./constants";
 const QUESTION_BY_ID = new Map(QUESTIONNAIRE_QUESTIONS.map((q) => [q.id, q]));
 
 /**
+ * In-memory TTL cache for CandidateUser objects and active profile ID list.
+ * Eliminates redundant cross-region DB queries when switching between tabs.
+ */
+const CANDIDATE_CACHE_TTL_MS = 60_000; // 60 seconds
+const candidateUserCache = new Map<
+  string,
+  { data: CandidateUser; expiresAt: number }
+>();
+let cachedAllProfileIds: { ids: string[]; expiresAt: number } | null = null;
+
+export function invalidateCandidateCache(userId?: string): void {
+  if (userId) {
+    candidateUserCache.delete(userId);
+  } else {
+    candidateUserCache.clear();
+  }
+  cachedAllProfileIds = null;
+}
+
+/**
  * Pure, deterministic ranking of candidate users against a viewer.
  */
 export function rankCandidates(
@@ -329,7 +349,7 @@ function mapRowToCandidateUser(row: any): CandidateUser {
 
 /**
  * Bulk-loads multiple CandidateUser domain objects in a SINGLE SQL query
- * to eliminate N+1 database round-trips.
+ * with an in-memory TTL cache to eliminate redundant round-trips across tab transitions.
  */
 export async function fetchCandidateUsersByIds(
   client: SupabaseClient<Database> | any,
@@ -338,6 +358,22 @@ export async function fetchCandidateUsersByIds(
   const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
   const resultMap = new Map<string, CandidateUser>();
   if (uniqueIds.length === 0) return resultMap;
+
+  const now = Date.now();
+  const missingIds: string[] = [];
+
+  for (const id of uniqueIds) {
+    const cached = candidateUserCache.get(id);
+    if (cached && cached.expiresAt > now) {
+      resultMap.set(id, cached.data);
+    } else {
+      missingIds.push(id);
+    }
+  }
+
+  if (missingIds.length === 0) {
+    return resultMap;
+  }
 
   if (isPgClient(client)) {
     const res = await client.query(
@@ -384,19 +420,24 @@ export async function fetchCandidateUsersByIds(
       ) rm on p.housing_status = 'has_room'
       where p.user_id = any($1::uuid[])
     `,
-      [uniqueIds]
+      [missingIds]
     );
 
+    const expiresAt = Date.now() + CANDIDATE_CACHE_TTL_MS;
     for (const row of res.rows) {
       const candidate = mapRowToCandidateUser(row);
       resultMap.set(candidate.userId, candidate);
+      candidateUserCache.set(candidate.userId, {
+        data: candidate,
+        expiresAt,
+      });
     }
     return resultMap;
   }
 
   // Fallback for Supabase JS client
   const loaded = await Promise.all(
-    uniqueIds.map((id) => fetchCandidateUser(client, id))
+    missingIds.map((id) => fetchCandidateUser(client, id))
   );
   for (const c of loaded) {
     if (c) resultMap.set(c.userId, c);

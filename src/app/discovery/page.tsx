@@ -6,6 +6,8 @@ import { DiscoveryView } from "./DiscoveryView";
 import Link from "next/link";
 import { Sparkles, UserPlus, LogIn, Compass } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 interface DiscoveryPageProps {
   searchParams: Promise<{
     completed?: string;

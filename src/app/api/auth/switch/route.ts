@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setCurrentUserId, clearSession } from "@/lib/server/session";
+import {
+  setCurrentUserId,
+  clearSession,
+  invalidateUserSummaryCache,
+} from "@/lib/server/session";
 
 export async function POST(request: NextRequest) {
   try {
@@ -7,10 +11,12 @@ export async function POST(request: NextRequest) {
     const { userId } = body;
     if (!userId || userId === "logout") {
       await clearSession();
+      invalidateUserSummaryCache();
       return NextResponse.json({ ok: true, loggedOut: true });
     }
 
     await setCurrentUserId(userId);
+    invalidateUserSummaryCache(userId);
     return NextResponse.json({ ok: true, userId });
   } catch (error) {
     return NextResponse.json(

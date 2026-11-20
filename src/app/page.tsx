@@ -3,19 +3,14 @@ import { getCurrentUserId, getCurrentUser, DEMO_USERS } from "@/lib/server/sessi
 import {
   Sparkles,
   Compass,
-  Heart,
-  ShieldCheck,
-  CheckCircle2,
-  Users,
-  Home,
-  ArrowRight,
   TrendingUp,
   Layers,
   UserPlus,
   LogIn,
-  LogOut,
 } from "lucide-react";
 import { CATEGORY_META, CATEGORY_WEIGHTS } from "@/lib/matching/constants";
+
+export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
   const currentUserId = await getCurrentUserId();
@@ -65,14 +60,6 @@ export default async function LandingPage() {
                 >
                   <Layers className="w-5 h-5 text-blue-600" />
                   <span>Cập nhật khảo sát Onboarding</span>
-                </Link>
-
-                <Link
-                  href="/api/auth/switch-redirect?userId=logout"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-4 rounded-2xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-700 font-semibold text-sm transition-all"
-                >
-                  <LogOut className="w-4 h-4 text-rose-500" />
-                  <span>Đăng xuất</span>
                 </Link>
               </>
             ) : (
@@ -190,40 +177,33 @@ export default async function LandingPage() {
             {DEMO_USERS.map((u) => {
               const isCurrent = u.id === currentUserId;
               return (
-                <form
+                <a
                   key={u.id}
-                  action="/api/auth/switch"
-                  method="POST"
-                  className="flex flex-col"
+                  href={`/api/auth/switch-redirect?userId=${u.id}`}
+                  className={`p-4 rounded-2xl border text-center transition-all flex flex-col items-center justify-center h-full ${
+                    isCurrent
+                      ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20"
+                      : "bg-white text-slate-800 border-slate-200 hover:bg-slate-100"
+                  }`}
                 >
-                  <input type="hidden" name="userId" value={u.id} />
-                  <a
-                    href={`/api/auth/switch-redirect?userId=${u.id}`}
-                    className={`p-4 rounded-2xl border text-center transition-all flex flex-col items-center justify-center h-full ${
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm mb-2 ${
                       isCurrent
-                        ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20"
-                        : "bg-white text-slate-800 border-slate-200 hover:bg-slate-100"
+                        ? "bg-white text-blue-600"
+                        : "bg-blue-50 text-blue-600"
                     }`}
                   >
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm mb-2 ${
-                        isCurrent
-                          ? "bg-white text-blue-600"
-                          : "bg-blue-50 text-blue-600"
-                      }`}
-                    >
-                      {u.displayName[0]}
-                    </div>
-                    <div className="font-bold text-xs">{u.fullName}</div>
-                    <div
-                      className={`text-[10px] mt-1 line-clamp-1 ${
-                        isCurrent ? "text-blue-100" : "text-slate-400"
-                      }`}
-                    >
-                      {u.roleDescription}
-                    </div>
-                  </a>
-                </form>
+                    {u.displayName[0]}
+                  </div>
+                  <div className="font-bold text-xs">{u.fullName}</div>
+                  <div
+                    className={`text-[10px] mt-1 line-clamp-1 ${
+                      isCurrent ? "text-blue-100" : "text-slate-400"
+                    }`}
+                  >
+                    {u.roleDescription}
+                  </div>
+                </a>
               );
             })}
           </div>

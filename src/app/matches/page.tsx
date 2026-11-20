@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
 import { scorePair } from "@/lib/matching/scoring";
+import { SessionRestoreGuard } from "@/components/SessionRestoreGuard";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -16,6 +16,8 @@ import {
   type ReceivedLikeItem,
 } from "./MatchesClient";
 
+export const dynamic = "force-dynamic";
+
 interface MatchesPageProps {
   searchParams: Promise<{
     tab?: string;
@@ -26,7 +28,7 @@ export default async function MatchesPage({ searchParams }: MatchesPageProps) {
   const { tab } = await searchParams;
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
-    redirect("/login");
+    return <SessionRestoreGuard />;
   }
   const currentUser = await getCurrentUser();
 

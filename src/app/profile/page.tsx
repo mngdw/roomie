@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
-import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
+import { getCurrentUserId } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUser } from "@/lib/matching/recommendations";
 import { getFallbackCandidateUser } from "@/lib/data/fallback-candidates";
 import { getHanoiAreaLabel } from "@/lib/constants/hanoi-areas";
+import { SessionRestoreGuard } from "@/components/SessionRestoreGuard";
 import Link from "next/link";
 import {
   Edit3,
@@ -14,12 +14,13 @@ import {
   Heart,
 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function MyProfilePage() {
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
-    redirect("/login");
+    return <SessionRestoreGuard />;
   }
-  const currentUser = await getCurrentUser();
 
   let user = null;
   try {

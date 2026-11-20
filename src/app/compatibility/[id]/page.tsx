@@ -1,7 +1,8 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getCurrentUserId, getCurrentUser } from "@/lib/server/session";
 import { withAdminDb } from "@/lib/server/db";
 import { fetchCandidateUsersByIds } from "@/lib/matching/recommendations";
+import { SessionRestoreGuard } from "@/components/SessionRestoreGuard";
 import {
   getFallbackCandidateUser,
   getExactFallbackCandidateUser,
@@ -21,6 +22,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 interface CompatibilityPageProps {
   params: Promise<{ id: string }>;
 }
@@ -31,7 +34,7 @@ export default async function CompatibilityPage({
   const { id } = await params;
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
-    redirect("/login");
+    return <SessionRestoreGuard />;
   }
   const currentUser = await getCurrentUser();
 
